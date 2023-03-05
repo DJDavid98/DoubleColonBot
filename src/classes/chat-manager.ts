@@ -88,14 +88,17 @@ export class ChatManager {
     const messageReply: MessageReply = (reply) => {
       return this.client.say(channel, `@${tags.username} ${reply} (${correlationId})`);
     };
-    return this.handleCommand(channel, messageReply, log, parsedCommand.name, parsedCommand.params);
+    return this.handleCommand(channel, messageReply, log, tags, parsedCommand.name, parsedCommand.params);
   }
 
-  private async handleCommand(channel: string, reply: MessageReply, log: Logger, name: CommandName, params?: string): Promise<unknown> {
+  private async handleCommand(channel: string, reply: MessageReply, log: Logger, tags: ChatUserstate, name: CommandName, params?: string): Promise<unknown> {
     switch (name) {
       case CommandName.category:
       case CommandName.game: {
         {
+          if (!tags.mod) {
+            return reply('Only channel moderators can use this command');
+          }
           if (!params) {
             return reply('Please provide the name of the category/game');
           }
