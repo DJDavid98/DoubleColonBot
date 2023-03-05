@@ -20,7 +20,7 @@ interface ChatCommand {
   params?: string;
 }
 
-type MessageReply = (reply: string) => Promise<unknown>;
+type MessageReply = (reply: string, success?: boolean) => Promise<unknown>;
 
 interface ChatManagerDeps {
   publicHost: string;
@@ -45,7 +45,6 @@ export class ChatManager {
       return undefined;
     }
     const [, name, params] = match;
-    log.debug(`Command match: ${JSON.stringify(match)}`);
     const normalizedName = name?.toLowerCase();
     if (!isKnownCommand(normalizedName)) {
       log.debug(`Ignoring unknown command ${normalizedName}`);
@@ -55,8 +54,7 @@ export class ChatManager {
     return { name: normalizedName, params: trimmedParams.length > 0 ? trimmedParams : undefined };
   }
 
-  private async getChannelAccessToken(reply: MessageReply, log: Logger, channel: string): Promise<{ token: string, id: string } | undefined> {
-    const login = channel.replace(/^#/, '');
+  private async getChannelAccessToken(reply: MessageReply, log: Logger, login: string): Promise<{ token: string, id: string } | undefined> {
     log.debug(`Retrieving access token for login ${login}`);
     const userTokenRows = await usersTable.selectUser(this.db, login);
     if (userTokenRows.rowCount === 1) {
@@ -85,22 +83,35 @@ export class ChatManager {
       return;
     }
 
-    const messageReply: MessageReply = (reply) => {
-      return this.client.say(channel, `@${tags.username} ${reply} (${correlationId})`);
+    const messageReply: MessageReply = (reply, success = false) => {
+      let replyText = reply;
+      if (!success) {
+        replyText += ` (${correlationId})`;
+      }
+      return this.client.say(channel, `@${tags.username} ${replyText}`);
     };
     return this.handleCommand(channel, messageReply, log, tags, parsedCommand.name, parsedCommand.params);
   }
 
+  private isStreamer(login: string, tags: ChatUserstate) {
+    return tags.username === login;
+  }
+
+  private isMod(login: string, tags: ChatUserstate) {
+    return tags.mod === true || this.isStreamer(login, tags);
+  }
+
   private async handleCommand(channel: string, reply: MessageReply, log: Logger, tags: ChatUserstate, name: CommandName, params?: string): Promise<unknown> {
+    const login = channel.replace(/^#/, '');
     switch (name) {
       case CommandName.category:
       case CommandName.game: {
         {
-          if (!tags.mod) {
+          if (!this.isMod(login, tags)) {
             return reply('Only channel moderators can use this command');
           }
           if (!params) {
-            return reply('Please provide the name of the category/game');
+            return reply(`Please provide the name of the ${name}`);
           }
 
           const query = params;
@@ -110,7 +121,7 @@ export class ChatManager {
           const search = validateSearchCategories(searchResponse);
           if (!search.value || search.error) {
             log.error(search.error.annotate());
-            return reply('Category search failed, please try again later');
+            return reply(`Could not search ${plural(name, true)}, please try again later`);
           }
 
           const categories = search.value.data;
@@ -118,7 +129,7 @@ export class ChatManager {
           let bestMatch: SearchCategory;
           switch (categories.length) {
             case 0: {
-              return reply('No matching game/category was found, please try a different name');
+              return reply(`No matching ${name} was found, please try a different name`);
             }
             case 1: {
               bestMatch = categories[0];
@@ -138,7 +149,7 @@ export class ChatManager {
           const newCategoryName = bestMatch.name;
           log.info(`Found best matching category "${newCategoryName}" #${bestMatch.id}`);
 
-          const userToken = await this.getChannelAccessToken(reply, log, channel);
+          const userToken = await this.getChannelAccessToken(reply, log, login);
           if (!userToken) {
             return;
           }
@@ -159,7 +170,7 @@ export class ChatManager {
           }
 
           log.info('Stream category update successful');
-          return reply(`Stream category successfully updated to ${newCategoryName}`);
+          return reply(`Stream ${name} set to ${newCategoryName}`, true);
         }
       }
       default: {
