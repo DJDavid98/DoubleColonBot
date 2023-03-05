@@ -11,8 +11,6 @@ const {
   TWITCH_CLIENT_ID,
   TWITCH_CLIENT_SECRET,
   DATABASE_URL,
-  SSL_CERT,
-  SSL_KEY,
 } = process.env;
 
 /**
@@ -28,8 +26,6 @@ export const env = (() => {
     TWITCH_CLIENT_ID,
     TWITCH_CLIENT_SECRET,
     DATABASE_URL,
-    SSL_CERT,
-    SSL_KEY,
   };
 
   type Values = typeof values;
