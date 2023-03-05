@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "declaration": false,
+    "lib": [
+      "ES2018",
+      "DOM"
+    ],
+    "incremental": true,
+    "tsBuildInfoFile": "./build/.tsbuildinfo",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "outDir": "build",
+    "rootDir": "src",
+    "sourceMap": true,
+    "strict": true,
+    "target": "ES2020",
+    "module": "CommonJS"
+  },
+  "exclude": [
+    "migrations"
+  ],
+  "include": ["src", "config"]
+}
