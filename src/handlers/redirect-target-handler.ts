@@ -28,7 +28,7 @@ export const redirectTargetHandler = (deps: AppHandlerDependencies): RequestHand
   }
 
   // Check provided state
-  const stateValid = await deps.stateManager.validateState(authCode.value.state);
+  const stateValid = await deps.stateManager.validateState(logger, authCode.value.state);
   if (!stateValid) {
     return jsonResponse({
       statusCode: 403,
@@ -48,12 +48,14 @@ export const redirectTargetHandler = (deps: AppHandlerDependencies): RequestHand
     clientId: deps.clientId,
     clientSecret: deps.clientSecret,
   });
+
   const appResponse = await handleAccessTokenUpdate({
     logger,
     tokenResponse,
     clientId: deps.clientId,
     db: deps.db,
     getFreshAccessToken: deps.getFreshAccessToken,
+    channelManager: deps.channelManager,
   });
 
   jsonResponse(appResponse);

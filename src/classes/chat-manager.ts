@@ -5,13 +5,17 @@ import { FetchTwitchApiParams } from '../model/fetch-twitch-api-params';
 import { fetchTwitchApiEndpoint } from '../utils/fetch-twitch-api-endpoint';
 import { SearchCategory, validateSearchCategories } from '../validation/validate-search-categories';
 import { getRandomString } from '../utils/random';
-import { correlationIdLoggerFactory } from '../utils/correlation-id-logger-factory';
+import { correlationIdLoggerFactory } from '../factories/correlation-id-logger-factory';
 import levenshtein from 'js-levenshtein';
 import { plural } from '../utils/plural';
 import { usersTable } from '../database/users-table';
 import { getAuthStartUrl } from '../utils/get-auth-start-url';
 import { TwitchApiEndpoint } from '../constants/twitch-api-endpoint';
 import { Logger } from '../model/logger';
+import { ChannelManager } from './channel-manager';
+import { formatCorrelationId } from '../utils/format-correlation-id';
+import { normalizeChannelName } from '../utils/normalize-channel-name';
+import { calculateExpectedChannelsDiff } from '../utils/calculate-expected-channels-diff';
 
 const commandRegex = /^!([\da-z]+)(?:\s+(.*))?$/i;
 
@@ -25,6 +29,7 @@ type MessageReply = (reply: string, success?: boolean) => Promise<unknown>;
 interface ChatManagerDeps {
   publicHost: string;
   getFetchTwitchApiParams: (logger: Logger) => FetchTwitchApiParams;
+  channelManager: ChannelManager;
 }
 
 export class ChatManager {
@@ -33,9 +38,21 @@ export class ChatManager {
   constructor(private db: DbClient, options: Options, private deps: ChatManagerDeps) {
     this.client = new Client(options);
     this.client.on('message', (...params) => this.handleMessage(...params));
+    deps.channelManager.addListener(async newChannels => {
+      const currentChannels = this.client.getChannels().map((c) => normalizeChannelName(c));
+
+      const { joinChannels, partChannels } = calculateExpectedChannelsDiff(newChannels, currentChannels);
+      for (const joinChannel of joinChannels) {
+        await this.client.join(joinChannel);
+      }
+      for (const partChannel of partChannels) {
+        await this.client.part(partChannel);
+      }
+    });
   }
 
-  async waitForConnection() {
+  async waitForConnection(log: Logger) {
+    log.debug('Waiting for WS client connection…');
     await this.client.connect();
   }
 
@@ -86,7 +103,7 @@ export class ChatManager {
     const messageReply: MessageReply = (reply, success = false) => {
       let replyText = reply;
       if (!success) {
-        replyText += ` (${correlationId})`;
+        replyText += ` ${formatCorrelationId(correlationId)}`;
       }
       return this.client.say(channel, `@${tags.username} ${replyText}`);
     };
@@ -102,7 +119,7 @@ export class ChatManager {
   }
 
   private async handleCommand(channel: string, reply: MessageReply, log: Logger, tags: ChatUserstate, name: CommandName, params?: string): Promise<unknown> {
-    const login = channel.replace(/^#/, '');
+    const login = normalizeChannelName(channel);
     switch (name) {
       case CommandName.category:
       case CommandName.game: {

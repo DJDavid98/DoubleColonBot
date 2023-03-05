@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { correlationIdLoggerFactory } from '../utils/correlation-id-logger-factory';
+import { correlationIdLoggerFactory } from './correlation-id-logger-factory';
 import { LogMessage } from '../model/log-message';
 
 export interface JsonResponseProps {

@@ -8,6 +8,7 @@ import { Client } from 'pg';
 import { AccessToken } from '../validation/validate-access-token';
 import { UsersInput } from '../database/database-schema';
 import { Logger } from '../model/logger';
+import { ChannelManager } from '../classes/channel-manager';
 
 export interface UpdateUserDeps {
   /**
@@ -18,6 +19,7 @@ export interface UpdateUserDeps {
   logger: Logger;
   getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
   db: Client;
+  channelManager: ChannelManager;
 }
 
 /**
@@ -79,7 +81,11 @@ export const updateUser = async (deps: UpdateUserDeps): Promise<JsonResponseProp
       refresh_token: deps.token.refresh_token,
     };
   }
+
+  deps.logger.info(`Creating or updating user ${login} #${id}…`);
   await usersTable.createUser(deps.db, updateData);
+
+  await deps.channelManager.updateChannels(deps.logger);
 
   return {
     statusCode: 200,

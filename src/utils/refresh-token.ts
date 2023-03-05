@@ -3,6 +3,7 @@ import { usersTable } from '../database/users-table';
 import { fetchAccessToken } from './fetch-access-token';
 import { handleAccessTokenUpdate } from './handle-access-token-update';
 import { Logger } from '../model/logger';
+import { ChannelManager } from '../classes/channel-manager';
 
 interface RefreshTokenParams {
   db: Client;
@@ -11,6 +12,7 @@ interface RefreshTokenParams {
   clientId: string;
   clientSecret: string;
   logger: Logger;
+  channelManager: ChannelManager;
 }
 
 export const refreshToken = async ({
@@ -20,6 +22,7 @@ export const refreshToken = async ({
   clientId,
   clientSecret,
   logger,
+  channelManager,
 }: RefreshTokenParams): Promise<void> => {
   const user = await usersTable.selectRefreshToken(db, access_token).then(({ rows }) => rows[0]);
   if (!user || !user.refresh_token) {
@@ -42,6 +45,7 @@ export const refreshToken = async ({
     db: db,
     // We're in the function that's supposed to refresh the token, if this fails all hope is lost
     getFreshAccessToken: null,
+    channelManager,
   });
   if (appResponse.log) {
     logger(appResponse.log.severity, appResponse.log.message);

@@ -1,5 +1,6 @@
-import { isLogSeverity, LogSeverity } from '../model/log-severity';
+import { isLogSeverity } from '../model/log-severity';
 import { Logger, LoggerFunction } from '../model/logger';
+import { formatCorrelationId } from '../utils/format-correlation-id';
 
 
 /**
@@ -8,8 +9,8 @@ import { Logger, LoggerFunction } from '../model/logger';
  * @param correlationId
  */
 export const correlationIdLoggerFactory = (correlationId: string): Logger => {
-  const logger: LoggerFunction = (severity: LogSeverity, message: string) =>
-    console[severity](`${message} (${correlationId})`);
+  const logger: LoggerFunction = (severity, message) =>
+    console[severity](`${severity}${formatCorrelationId(correlationId)}: ${message}`);
   const loggerCache: Partial<Logger> = {};
   return new Proxy(logger as Logger, {
     get(_, p) {

@@ -1,7 +1,7 @@
 import { RequestHandler } from 'express';
 import { AppHandlerDependencies } from '../model/app-handler-dependencies';
 import { getRandomUuid } from '../utils/random';
-import { correlationIdLoggerFactory } from '../utils/correlation-id-logger-factory';
+import { correlationIdLoggerFactory } from '../factories/correlation-id-logger-factory';
 import { getAuthorizationUrl } from '../utils/get-authorization-url';
 
 /**
@@ -10,7 +10,7 @@ import { getAuthorizationUrl } from '../utils/get-authorization-url';
 export const authStartHandler = (deps: AppHandlerDependencies): RequestHandler => async (req, res) => {
   const logger = correlationIdLoggerFactory(getRandomUuid());
   logger.info('Generating authorization URL…');
-  const target = await getAuthorizationUrl(deps.publicHost, deps.clientId, await deps.stateManager.getState());
+  const target = await getAuthorizationUrl(deps.publicHost, deps.clientId, await deps.stateManager.getState(logger));
   logger.info(`Generated authorization URL: ${target}`);
   res.redirect(target);
 };

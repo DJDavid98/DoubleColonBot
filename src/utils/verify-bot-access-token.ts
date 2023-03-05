@@ -11,17 +11,17 @@ interface ReadAuthCodeDeps extends Omit<UpdateUserDeps, 'token'> {
 
 export const verifyBotAccessToken = async (deps: ReadAuthCodeDeps): Promise<void> => {
   const obtainCode = async (): Promise<void> => {
-    console.info(`Looking for access token for user ${deps.botUsername}…`);
+    deps.logger.info(`Looking for access token for user ${deps.botUsername}…`);
     const token = await deps.accessTokenManager.getToken(deps.logger, deps.botUsername).catch(error => {
       deps.logger.error(error);
     });
 
     if (!token) {
-      console.warn(`No access token found for bot user ${deps.botUsername}, please authenticate using the URL below:`);
-      console.info(getAuthStartUrl(deps.publicHost));
+      deps.logger.warn(`No access token found for bot user ${deps.botUsername}, please authenticate using the URL below:`);
+      deps.logger.info(getAuthStartUrl(deps.publicHost));
 
       // Wait for user to press a key before trying again
-      console.info('Waiting for authentication, press any key when finished…');
+      deps.logger.info('Waiting for authentication, press any key when finished…');
       const keypress = await waitForKeyPress();
 
       if (keypress.ctrl && keypress.name === 'c') {

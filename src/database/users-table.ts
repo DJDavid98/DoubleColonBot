@@ -5,6 +5,11 @@ import { runInsertQuery } from './common';
 export const usersTable = {
   selectUser: (db: Client, login: Users['login']) =>
     db.query<TableTypes['users']['select']>('SELECT * FROM users WHERE login = $1', [login]),
+  selectUserAccessToken: (db: Client, login: Users['login']) =>
+    db.query<Pick<TableTypes['users']['select'], 'access_token' | 'expires'>>(
+      'SELECT access_token, expires FROM users WHERE login = $1',
+      [login],
+    ),
   createUser: (db: Client, params: UsersInput) =>
     runInsertQuery(db, 'users', params, [
       'access_token',

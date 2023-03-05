@@ -4,6 +4,7 @@ import { Client } from 'pg';
 import { Logger } from '../model/logger';
 import { updateUser } from './update-user';
 import { FetchTwitchApiParams } from '../model/fetch-twitch-api-params';
+import { ChannelManager } from '../classes/channel-manager';
 
 export interface HandleAccessTokenUpdateDeps {
   tokenResponse: unknown;
@@ -11,6 +12,7 @@ export interface HandleAccessTokenUpdateDeps {
   db: Client;
   logger: Logger;
   getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
+  channelManager: ChannelManager;
 }
 
 export const handleAccessTokenUpdate = async (deps: HandleAccessTokenUpdateDeps): Promise<JsonResponseProps> => {

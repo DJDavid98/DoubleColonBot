@@ -9,6 +9,5 @@ export const getAuthorizationUrl = async (publicHost: string, clientId: string, 
     scope: BOT_REQUIRED_SCOPES.join(' '),
     state,
   };
-  console.debug(JSON.stringify(params, null, 4));
   return `${OAUTH_AUTHORIZE_URL}?${new URLSearchParams(params)}`;
 };
