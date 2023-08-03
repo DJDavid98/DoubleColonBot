@@ -11,15 +11,15 @@ Links:
 
 ### Chat commands
 
-| Command                          | Description                                                                                                               |
-|----------------------------------|---------------------------------------------------------------------------------------------------------------------------|
-| `!game name`<br>`!category name` | Set the currently played game/category for the stream<br/>Be sure to enter the full name of the game (not case-sensitive) |
-| `!chat`                          | List all available settings for the chat overlay                                                                          |
-| `!chat name_color #hex`          | Changes the name color displayed on the chat overlay to a custom hex color instead of your default Twitch chat color      |
-| `!chat reset`                    | Reset all chat overlay settings                                                                                           |
-| `!chat reset`                    | Reset all chat overlay settings                                                                                           |
-| `!pronouns`                      | Get the streamer's pronouns from the [Twitch pronouns API]                                                                |
-| `!pronouns username`             | Get a specific user's pronouns from the [Twitch pronouns API]                                                             |
+| Command                          | Description                                                                                                               | Permissions           |
+|----------------------------------|---------------------------------------------------------------------------------------------------------------------------|-----------------------|
+| `!game name`<br>`!category name` | Set the currently played game/category for the stream<br/>Be sure to enter the full name of the game (not case-sensitive) | Streamer & moderators |
+| `!chat`                          | List all available settings for the chat overlay                                                                          | Everyone              |
+| `!chat name_color #hex`          | Changes the name color displayed on the chat overlay to a custom hex color instead of your default Twitch chat color      | Everyone              |
+| `!chat reset`                    | Reset all chat overlay settings                                                                                           | Everyone              |
+| `!chat reset`                    | Reset all chat overlay settings                                                                                           | Everyone              |
+| `!pronouns`                      | Get the streamer's pronouns from the [Twitch pronouns API]                                                                | Everyone              |
+| `!pronouns username`             | Get a specific user's pronouns from the [Twitch pronouns API]                                                             | Everyone              |
 
 [Twitch pronouns API]: https://pronouns.alejo.io
 
