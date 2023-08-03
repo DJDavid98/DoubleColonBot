@@ -25,17 +25,16 @@ Links:
 
 ### WebSocket data
 
-The bot creates a socket.io server which can be connected to via its client library. All events have a `type` property
-to differentiate them, the rest of the properties are specific to each event. The socket server supports sending
+The bot creates a socket.io server which can be connected to via its client library. The socket server supports sending
 the following events:
 
-* `type: "chat"` - sent when a regular chat message is received in the channel from someone other than the bot (messages
+* `chat` - sent when a regular chat message is received in the channel from someone other than the bot (messages
   prefixed with `!` are ignored)
   * `name: string` - the display name of the user, or if it's not available, the login name
   * `message: string` - the message text
   * `pronouns: string | null` - human-readable pronoun name from the [Twitch pronouns API]
   * `tags: ChatUserstate` - information about the message and the user sending it, comes directly from the underlying
     library ([tmi.js Chat event]) with the `color` key potentially replaced based on the user's settings
-* `type: "clearChat"` - sent when the chat is cleared
+* `clearChat` - sent when the chat is cleared
 
 [tmi.js Chat event]: https://github.com/tmijs/docs/blob/b97a887ff5f09ed9c6e5c522b4745d440e8f5ad6/_posts/v1.4.2/2019-03-03-Events.md#chat

@@ -17,7 +17,6 @@ import { formatCorrelationId } from '../utils/format-correlation-id';
 import { normalizeChannelName } from '../utils/normalize-channel-name';
 import { calculateExpectedChannelsDiff } from '../utils/calculate-expected-channels-diff';
 import { WebsocketManager } from './websocket-manager';
-import { ChatWebsocketMessage } from '../model/websocket-message';
 import { PronounManager } from './pronoun-manager';
 import { RedisManager } from './redis-manager';
 import { chatSettingsTable } from '../database/chat-settings-table';
@@ -53,7 +52,7 @@ export class ChatManager {
       void this.handleChat(...params);
     });
     this.client.on('clearchat', (channel) => {
-      void this.deps.websocketManager.sendToRoom(normalizeChannelName(channel), { type: WebsocketMessageType.clearChat });
+      void this.deps.websocketManager.sendToRoom(normalizeChannelName(channel), WebsocketMessageType.clearChat);
     });
     deps.channelManager.addListener(async newChannels => {
       const currentChannels = this.client.getChannels().map((c) => normalizeChannelName(c));
@@ -163,14 +162,12 @@ export class ChatManager {
     const displayName = this.getDisplayName(inputTags);
     const tags = await this.getEnhancedTags(username, inputTags);
     const pronouns = await this.getPronounManager(log).getPronoun(username);
-    const socketMessage: ChatWebsocketMessage = {
-      type: WebsocketMessageType.chat,
+    this.deps.websocketManager.sendToRoom(login, WebsocketMessageType.chat, {
       name: displayName || username,
       message,
       pronouns,
       tags,
-    };
-    this.deps.websocketManager.sendToRoom(login, socketMessage);
+    });
   }
 
   private async getEnhancedTags(username: string, tags: ChatUserstate): Promise<ChatUserstate> {

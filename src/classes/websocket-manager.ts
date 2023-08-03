@@ -1,10 +1,10 @@
 import type http from 'node:http';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '../model/logger';
-import { WebsocketMessage } from '../model/websocket-message';
+import { ServerToClientEvents } from '../model/socket-events';
 
 export class WebsocketManager {
-  private io: Server;
+  private io: Server<Record<string, never>, ServerToClientEvents>;
 
   constructor(server: http.Server, private logger: Logger) {
     this.io = new Server(server); // Create socket.io instance
@@ -22,8 +22,8 @@ export class WebsocketManager {
     this.logger.debug(`Socket ${socket.id} joined room ${roomName}`);
   }
 
-  public sendToRoom(roomName: string, message: WebsocketMessage) {
-    this.io.to(roomName).emit('message', message);
-    this.logger.debug(`Message sent to room ${roomName}: ${JSON.stringify(message)}`);
+  public sendToRoom<EventType extends keyof ServerToClientEvents>(roomName: string, type: EventType, ...message: Parameters<ServerToClientEvents[EventType]>) {
+    this.io.to(roomName).emit(type, ...message);
+    this.logger.debug(`Message ${type} sent to room ${roomName}: ${JSON.stringify(message)}`);
   }
 }
