@@ -1,1 +1,1 @@
-export const normalizeChannelName = (channel: string) => channel.replace(/^#/, '');
+export const normalizeChannelName = (channel: string) => channel.replace(/^#/, '').toLowerCase();

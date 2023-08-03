@@ -16,6 +16,14 @@ import { ChannelManager } from './channel-manager';
 import { formatCorrelationId } from '../utils/format-correlation-id';
 import { normalizeChannelName } from '../utils/normalize-channel-name';
 import { calculateExpectedChannelsDiff } from '../utils/calculate-expected-channels-diff';
+import { WebsocketManager } from './websocket-manager';
+import { ChatWebsocketMessage } from '../model/websocket-message';
+import { PronounManager } from './pronoun-manager';
+import { RedisManager } from './redis-manager';
+import { chatSettingsTable } from '../database/chat-settings-table';
+import { WebsocketMessageType } from '../constants/webocket-message-type';
+import { ChatSettings, ChatSettingsInput, tables } from '../database/database-schema';
+import { getExceptionMessage } from '../utils/get-exteption-message';
 
 const commandRegex = /^!([\da-z]+)(?:\s+(.*))?$/i;
 
@@ -30,6 +38,8 @@ interface ChatManagerDeps {
   publicHost: string;
   getFetchTwitchApiParams: (logger: Logger) => FetchTwitchApiParams;
   channelManager: ChannelManager;
+  websocketManager: WebsocketManager;
+  redisManager: RedisManager;
 }
 
 export class ChatManager {
@@ -37,7 +47,14 @@ export class ChatManager {
 
   constructor(private db: DbClient, options: Options, private deps: ChatManagerDeps) {
     this.client = new Client(options);
-    this.client.on('message', (...params) => this.handleMessage(...params));
+    this.client.on('chat', (...params) => {
+      // Ignore self messages
+      if (params[3]) return;
+      void this.handleChat(...params);
+    });
+    this.client.on('clearchat', (channel) => {
+      void this.deps.websocketManager.sendToRoom(normalizeChannelName(channel), { type: WebsocketMessageType.clearChat });
+    });
     deps.channelManager.addListener(async newChannels => {
       const currentChannels = this.client.getChannels().map((c) => normalizeChannelName(c));
 
@@ -61,7 +78,7 @@ export class ChatManager {
     if (match === null) {
       return undefined;
     }
-    const [, name, params] = match;
+    const [, name, params = ''] = match;
     const normalizedName = name?.toLowerCase();
     if (!isKnownCommand(normalizedName)) {
       log.debug(`Ignoring unknown command ${normalizedName}`);
@@ -71,7 +88,10 @@ export class ChatManager {
     return { name: normalizedName, params: trimmedParams.length > 0 ? trimmedParams : undefined };
   }
 
-  private async getChannelAccessToken(reply: MessageReply, log: Logger, login: string): Promise<{ token: string, id: string } | undefined> {
+  private async getChannelAccessToken(reply: MessageReply, log: Logger, login: string): Promise<{
+    token: string,
+    id: string
+  } | undefined> {
     log.debug(`Retrieving access token for login ${login}`);
     const userTokenRows = await usersTable.selectUser(this.db, login);
     if (userTokenRows.rowCount === 1) {
@@ -90,13 +110,17 @@ export class ChatManager {
     return undefined;
   }
 
-  private handleMessage(channel: string, tags: ChatUserstate, message: string, self: boolean) {
+  private async handleChat(channel: string, tags: ChatUserstate, message: string, self: boolean) {
     if (self) return;
     const correlationId = getRandomString();
     const log = correlationIdLoggerFactory(correlationId);
+    const login = normalizeChannelName(channel);
 
     const parsedCommand = this.parseCommand(log, message);
     if (!parsedCommand) {
+      await this.handleChatMessage(login, message, log, tags);
+
+      // Not a command, no further processing done
       return;
     }
 
@@ -105,90 +129,240 @@ export class ChatManager {
       if (!success) {
         replyText += ` ${formatCorrelationId(correlationId)}`;
       }
-      return this.client.say(channel, `@${tags.username} ${replyText}`);
+      return this.client.raw(`@reply-parent-msg-id=${tags.id} PRIVMSG ${channel} :${replyText}`);
+      // return this.client.say(channel, `@${tags.username} ${replyText}`);
     };
-    return this.handleCommand(channel, messageReply, log, tags, parsedCommand.name, parsedCommand.params);
+    return this.handleCommand(login, messageReply, log, tags, parsedCommand.name, parsedCommand.params);
+  }
+
+  private getUsername(tags: ChatUserstate): string {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- Let's hope this is always available
+    return tags.username!;
+  }
+
+  private getDisplayName(tags: ChatUserstate) {
+    return tags['display-name'];
   }
 
   private isStreamer(login: string, tags: ChatUserstate) {
-    return tags.username === login;
+    return this.getUsername(tags) === login;
   }
 
   private isMod(login: string, tags: ChatUserstate) {
     return tags.mod === true || this.isStreamer(login, tags);
   }
 
-  private async handleCommand(channel: string, reply: MessageReply, log: Logger, tags: ChatUserstate, name: CommandName, params?: string): Promise<unknown> {
-    const login = normalizeChannelName(channel);
+  private getPronounManager(log: Logger) {
+    return new PronounManager(this.deps.redisManager, log);
+  }
+
+  private async handleChatMessage(login: string, message: string, log: Logger, inputTags: ChatUserstate): Promise<unknown> {
+    if (inputTags['message-type'] !== 'chat' || message.startsWith('!')) return;
+
+    const username = this.getUsername(inputTags);
+    const displayName = this.getDisplayName(inputTags);
+    const tags = await this.getEnhancedTags(username, inputTags);
+    const pronouns = await this.getPronounManager(log).getPronoun(username);
+    const socketMessage: ChatWebsocketMessage = {
+      type: WebsocketMessageType.chat,
+      name: displayName || username,
+      message,
+      pronouns,
+      tags,
+    };
+    this.deps.websocketManager.sendToRoom(login, socketMessage);
+  }
+
+  private async getEnhancedTags(username: string, tags: ChatUserstate): Promise<ChatUserstate> {
+    // define constant with defaults
+    const finalTags: ChatUserstate = {
+      ...tags,
+    };
+
+    const { rows } = await chatSettingsTable.selectChatSetting(this.db, username);
+    if (rows.length === 1) {
+      const [userSettings] = rows;
+      if (userSettings.name_color) {
+        finalTags.color = `#${userSettings.name_color}`;
+      }
+    }
+
+    return finalTags;
+  }
+
+  private async handleCommand(login: string, reply: MessageReply, log: Logger, tags: ChatUserstate, name: CommandName, params?: string): Promise<unknown> {
+    const username = this.getUsername(tags);
     switch (name) {
+      case CommandName.chat: {
+        const validSettingNames = tables.chat_settings.columns.filter(v => v !== tables.chat_settings.primaryKey);
+        if (!params) {
+          return reply(`Please provide a setting name (${validSettingNames.join(', ')}) and a value, separated by a space`);
+        }
+        const isValidSettingName = (inputSetting: string): inputSetting is Exclude<keyof ChatSettings, typeof tables.chat_settings.primaryKey> => validSettingNames.includes(inputSetting as keyof ChatSettings);
+
+        const currentSettings = await chatSettingsTable.selectChatSetting(this.db, username).then(({ rows }) => rows[0]);
+
+        const resetMatch = params.match(/^reset(?:\s*([_a-z]+))?$/);
+        if (resetMatch) {
+          if (!currentSettings) {
+            return reply('You do not have any saved chat overlay settings');
+          }
+
+          // Reset a specific setting
+          const resetSetting = resetMatch[1];
+          if (resetSetting) {
+            if (!isValidSettingName(resetSetting)) {
+              return reply(`Cannot reset unknown setting ${resetSetting}`);
+            }
+
+            try {
+              await chatSettingsTable.updateChatSetting(this.db, username, resetSetting, null);
+            } catch {
+              log('error', `Failed to reset setting ${resetSetting} for username ${username}`);
+              return reply(`Could not reset setting ${resetSetting} in the database`);
+            }
+            return reply(`Chat overlay setting ${resetSetting} reset to default`, true);
+          }
+
+          // Reset all settings
+          try {
+            await chatSettingsTable.deleteChatSetting(this.db, username);
+          } catch {
+            log('error', `Failed to delete settings for username ${username}`);
+            return reply('Could not remove settings from database');
+          }
+          return reply('Chat overlay settings reset to defaults', true);
+        }
+
+        const matches = params.match(/^([_a-z]+)\s*("?)(.*)\2$/i);
+        if (!matches) {
+          return reply('Please provide a setting name, followed by a space and the value');
+        }
+
+        const [, settingName, , settingValue] = matches;
+        if (!isValidSettingName(settingName)) {
+          return reply(`Cannot change unknown setting ${settingName}`);
+        }
+
+        const chatSettings: ChatSettingsInput = { login: username };
+        switch (settingName) {
+          case 'name_color': {
+            const colorMatch = settingValue.trim().match(/^#?([\da-f]{6})$/i);
+            if (!colorMatch) {
+              return reply('This setting expects a HEX color value, for example: #abc123');
+            }
+            chatSettings[settingName] = colorMatch[1];
+            break;
+          }
+          default: {
+            return reply('This setting cannot be changed via commands', true);
+          }
+        }
+
+        try {
+          await (currentSettings ? chatSettingsTable.updateChatSetting(this.db, username, settingName, chatSettings[settingName] ?? null) : chatSettingsTable.createChatSetting(this.db, chatSettings));
+        } catch (error) {
+          log('error', `Failed to save settings ${JSON.stringify(chatSettings)}: ${getExceptionMessage(error)}`);
+          return reply('Could not save settings in database');
+        }
+
+        return reply(`Chat overlay settings updated, to clear use !chat reset ${settingName}`, true);
+      }
+      case CommandName.pronouns: {
+        const pronounManager = this.getPronounManager(log);
+        let targetUser: string;
+        if (params) {
+          const usernameMatch = params.trim().match(/^@?(\w{1,25})$/i);
+          if (!usernameMatch) {
+            return reply('Please provide a valid username (or no parameters for the streamer\'s pronouns)');
+          }
+          targetUser = usernameMatch[1];
+        } else {
+          targetUser = login;
+        }
+        let pronouns = null;
+        try {
+          pronouns = await pronounManager.getPronoun(targetUser);
+        } catch {
+          return reply('Could not retrieve streamer\'s pronouns');
+        }
+
+        if (pronouns === null) {
+          if (targetUser === login && this.isStreamer(targetUser, tags)) {
+            return reply(`You don't seem to have your pronouns set, visit ${PronounManager.serviceUrl} to change it (updates in ~5 minutes)`, true);
+          }
+
+          return reply(`Seems like ${targetUser} hasn't set their pronouns`, true);
+        }
+
+        return reply(`${targetUser} uses ${pronouns} pronouns`, true);
+      }
       case CommandName.category:
       case CommandName.game: {
-        {
-          if (!this.isMod(login, tags)) {
-            return reply('Only channel moderators can use this command');
-          }
-          if (!params) {
-            return reply(`Please provide the name of the ${name}`);
-          }
-
-          const query = params;
-          log.debug(`Executing category search for query "${query}"`);
-          const fetchTwitchApiParams = this.deps.getFetchTwitchApiParams(log);
-          const searchResponse = await fetchTwitchApiEndpoint(fetchTwitchApiParams, TwitchApiEndpoint.GET_SEARCH_CATEGORIES, { query }).then(r => r.json());
-          const search = validateSearchCategories(searchResponse);
-          if (!search.value || search.error) {
-            log.error(search.error.annotate());
-            return reply(`Could not search ${plural(name, true)}, please try again later`);
-          }
-
-          const categories = search.value.data;
-          log.debug(`Found ${plural('category', categories.length)}`);
-          let bestMatch: SearchCategory;
-          switch (categories.length) {
-            case 0: {
-              return reply(`No matching ${name} was found, please try a different name`);
-            }
-            case 1: {
-              bestMatch = categories[0];
-              break;
-            }
-            default: {
-              const distances = categories.reduce((d, cat) => ({
-                ...d,
-                [cat.name]: levenshtein(query, cat.name),
-              }), {} as Record<string, number>);
-              const categoriesByDistance = categories.sort((a, b) => distances[a.name] - distances[b.name]);
-              log.debug(`Categories sorted by distance: ${JSON.stringify(categoriesByDistance, null, 4)}`);
-              bestMatch = categoriesByDistance[0];
-            }
-          }
-
-          const newCategoryName = bestMatch.name;
-          log.info(`Found best matching category "${newCategoryName}" #${bestMatch.id}`);
-
-          const userToken = await this.getChannelAccessToken(reply, log, login);
-          if (!userToken) {
-            return;
-          }
-
-          const broadcaster_id = userToken.id;
-          const game_id = bestMatch.id;
-          log.info(`Updating channel of broadcaster #${broadcaster_id} with game #${game_id}`);
-          const updateResponse = await fetchTwitchApiEndpoint({
-            ...fetchTwitchApiParams,
-            token: userToken.token,
-          }, TwitchApiEndpoint.PATCH_CHANNELS, {
-            broadcaster_id,
-            game_id,
-          });
-          if (updateResponse.status !== 204) {
-            log.error(`Could not update game, HTTP ${updateResponse.status} response: ${await updateResponse.text()}`);
-            return reply(`Failed to update ${name}, please try again later.`);
-          }
-
-          log.info('Stream category update successful');
-          return reply(`Stream ${name} set to ${newCategoryName}`, true);
+        if (!this.isMod(username, tags)) {
+          return reply('Only channel moderators can use this command');
         }
+        if (!params) {
+          return reply(`Please provide the name of the ${name}`);
+        }
+
+        const query = params;
+        log.debug(`Executing category search for query "${query}"`);
+        const fetchTwitchApiParams = this.deps.getFetchTwitchApiParams(log);
+        const searchResponse = await fetchTwitchApiEndpoint(fetchTwitchApiParams, TwitchApiEndpoint.GET_SEARCH_CATEGORIES, { query }).then(r => r.json());
+        const search = validateSearchCategories(searchResponse);
+        if (!search.value || search.error) {
+          log.error(search.error.annotate());
+          return reply(`Could not search ${plural(name, true)}, please try again later`);
+        }
+
+        const categories = search.value.data;
+        log.debug(`Found ${plural('category', categories.length)}`);
+        let bestMatch: SearchCategory;
+        switch (categories.length) {
+          case 0: {
+            return reply(`No matching ${name} was found, please try a different name`);
+          }
+          case 1: {
+            bestMatch = categories[0];
+            break;
+          }
+          default: {
+            const distances = categories.reduce((d, cat) => ({
+              ...d,
+              [cat.name]: levenshtein(query, cat.name),
+            }), {} as Record<string, number>);
+            const categoriesByDistance = categories.sort((a, b) => distances[a.name] - distances[b.name]);
+            log.debug(`Categories sorted by distance: ${JSON.stringify(categoriesByDistance, null, 4)}`);
+            bestMatch = categoriesByDistance[0];
+          }
+        }
+
+        const newCategoryName = bestMatch.name;
+        log.info(`Found best matching category "${newCategoryName}" #${bestMatch.id}`);
+
+        const userToken = await this.getChannelAccessToken(reply, log, login);
+        if (!userToken) {
+          return;
+        }
+
+        const broadcaster_id = userToken.id;
+        const game_id = bestMatch.id;
+        log.info(`Updating channel of broadcaster #${broadcaster_id} with game #${game_id}`);
+        const updateResponse = await fetchTwitchApiEndpoint({
+          ...fetchTwitchApiParams,
+          token: userToken.token,
+        }, TwitchApiEndpoint.PATCH_CHANNELS, {
+          broadcaster_id,
+          game_id,
+        });
+        if (updateResponse.status !== 204) {
+          log.error(`Could not update game, HTTP ${updateResponse.status} response: ${await updateResponse.text()}`);
+          return reply(`Failed to update ${name}, please try again later.`);
+        }
+
+        log.info('Stream category update successful');
+        return reply(`Stream ${name} set to ${newCategoryName}`, true);
       }
       default: {
         throw new Error(`Unhandled command ${name}`);

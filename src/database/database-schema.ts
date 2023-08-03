@@ -12,6 +12,25 @@
 
 export type Json = unknown;
 
+// Table chat_settings
+export interface ChatSettings {
+  login: string;
+  name_color: string | null;
+}
+export interface ChatSettingsInput {
+  login: string;
+  name_color?: string | null;
+}
+const chat_settings = {
+  tableName: 'chat_settings',
+  columns: ['login', 'name_color'],
+  requiredForInsert: ['login'],
+  primaryKey: 'login',
+  foreignKeys: {},
+  $type: null as unknown as ChatSettings,
+  $input: null as unknown as ChatSettingsInput
+} as const;
+
 // Table states
 export interface States {
   state: string;
@@ -62,6 +81,10 @@ const users = {
 
 
 export interface TableTypes {
+  chat_settings: {
+  select: ChatSettings;
+  input: ChatSettingsInput;
+  };
   states: {
   select: States;
   input: StatesInput;
@@ -73,6 +96,7 @@ export interface TableTypes {
 }
 
 export const tables = {
+  chat_settings,
   states,
   users,
 }

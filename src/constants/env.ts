@@ -11,6 +11,8 @@ const {
   TWITCH_CLIENT_ID,
   TWITCH_CLIENT_SECRET,
   DATABASE_URL,
+  REDIS_URL,
+  REDIS_PREFIX,
 } = process.env;
 
 /**
@@ -26,6 +28,8 @@ export const env = (() => {
     TWITCH_CLIENT_ID,
     TWITCH_CLIENT_SECRET,
     DATABASE_URL,
+    REDIS_URL,
+    REDIS_PREFIX,
   };
 
   type Values = typeof values;

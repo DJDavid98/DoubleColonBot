@@ -1,10 +1,12 @@
 import express, { Express } from 'express';
 import http from 'node:http';
 import { Logger } from '../model/logger';
+import { WebsocketManager } from '../classes/websocket-manager';
 
 export interface WebServer {
   publicHost: string;
   app: Express;
+  websocketManager: WebsocketManager;
 }
 
 interface WebServerFactoryParams {
@@ -24,5 +26,9 @@ export const webServerFactory = (
 
   deps.logger.info(`[Express] Server listening on ${deps.host}:${deps.port}`);
 
-  return { publicHost: `https://${deps.publicDomain}`, app };
+  return {
+    publicHost: `https://${deps.publicDomain}`,
+    app,
+    websocketManager: new WebsocketManager(server, deps.logger),
+  };
 };

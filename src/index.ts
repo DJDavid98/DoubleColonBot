@@ -16,6 +16,7 @@ import { Logger } from './model/logger';
 import { correlationIdLoggerFactory } from './factories/correlation-id-logger-factory';
 import { FetchTwitchApiParams } from './model/fetch-twitch-api-params';
 import { ChannelManager } from './classes/channel-manager';
+import { RedisManager } from './classes/redis-manager';
 
 extend(relativeTime);
 
@@ -26,6 +27,7 @@ process.title = 'DoubleColonBot';
   let stateManager: StateManager;
   let accessTokenManager: AccessTokenManager;
   let channelManager: ChannelManager;
+  let redisManager: RedisManager;
   let getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
   let botToken: string;
 
@@ -33,7 +35,7 @@ process.title = 'DoubleColonBot';
   const clientSecret = env.TWITCH_CLIENT_SECRET;
   const botUsername = env.TWITCH_LOGIN;
   const startupLogger = correlationIdLoggerFactory('startup');
-  const { publicHost, app } = webServerFactory({
+  const { publicHost, app, websocketManager } = webServerFactory({
     host: env.HOST,
     port: env.PORT,
     publicDomain: env.PUBLIC_DOMAIN,
@@ -42,6 +44,8 @@ process.title = 'DoubleColonBot';
 
   try {
     db = await databaseClientFactory(startupLogger);
+    redisManager = new RedisManager();
+    await redisManager.initClient(startupLogger);
     channelManager = new ChannelManager(db);
     stateManager = new StateManager(db);
     await stateManager.startCleanupInterval(startupLogger);
@@ -100,6 +104,8 @@ process.title = 'DoubleColonBot';
       logger,
     }),
     channelManager,
+    websocketManager,
+    redisManager,
   });
 
   await chatManager.waitForConnection(startupLogger);
