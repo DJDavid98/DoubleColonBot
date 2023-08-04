@@ -161,6 +161,17 @@ export class ChatManager {
     if (inputTags['message-type'] !== 'chat' || message.startsWith('!')) return;
 
     const username = this.getUsername(inputTags);
+    switch (username) {
+      case 'kofistreambot': {
+        const donationMatch = message.match(/^Thank you for your support, ([^!]+)!$/);
+        if (donationMatch) {
+          this.deps.websocketManager.sendToRoom(login, WebsocketMessageType.donation, { from: donationMatch[1] });
+          return;
+        }
+        break;
+      }
+    }
+
     const displayName = this.getDisplayName(inputTags);
     const tags = await this.getEnhancedTags(username, inputTags);
     const pronouns = await this.getPronounManager(log).getPronoun(username);

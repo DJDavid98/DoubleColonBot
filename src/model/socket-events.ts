@@ -7,6 +7,12 @@ export interface ClientToServerEvents {
 export interface ServerToClientEvents {
   chat: (message: ChatWebsocketMessage) => void;
   clearChat: () => void;
+  follow: () => void;
+  donation: (message: DonationWebsocketMessage) => void;
+}
+
+export interface DonationWebsocketMessage {
+  from: string;
 }
 
 export interface ChatWebsocketMessage {
