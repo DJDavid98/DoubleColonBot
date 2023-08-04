@@ -1,5 +1,9 @@
 import { ChatUserstate } from 'tmi.js';
 
+export interface ClientToServerEvents {
+  joinRoom: (room: string) => void;
+}
+
 export interface ServerToClientEvents {
   chat: (message: ChatWebsocketMessage) => void;
   clearChat: () => void;

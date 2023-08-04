@@ -1,20 +1,18 @@
 import type http from 'node:http';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '../model/logger';
-import { ServerToClientEvents } from '../model/socket-events';
+import { ClientToServerEvents, ServerToClientEvents } from '../model/socket-events';
 
 export class WebsocketManager {
-  private io: Server<Record<string, never>, ServerToClientEvents>;
+  private io: Server<ClientToServerEvents, ServerToClientEvents>;
 
   constructor(server: http.Server, private logger: Logger) {
-    this.io = new Server(server); // Create socket.io instance
+    this.io = new Server(server, { serveClient: false }); // Create socket.io instance
     this.io.on('connection', this.onConnection.bind(this));
   }
 
   private onConnection(socket: Socket) {
-    // socket.on('message', this.onMessage.bind(this, socket));
     socket.on('joinRoom', this.joinRoom.bind(this, socket));
-    // Add any other event listeners or custom logic for new connections here
   }
 
   private joinRoom(socket: Socket, roomName: string) {

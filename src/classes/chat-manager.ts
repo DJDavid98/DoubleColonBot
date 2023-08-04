@@ -23,6 +23,7 @@ import { chatSettingsTable } from '../database/chat-settings-table';
 import { WebsocketMessageType } from '../constants/webocket-message-type';
 import { ChatSettings, ChatSettingsInput, tables } from '../database/database-schema';
 import { getExceptionMessage } from '../utils/get-exteption-message';
+import { env } from '../constants/env';
 
 const commandRegex = /^!([\da-z]+)(?:\s+(.*))?$/i;
 
@@ -110,7 +111,8 @@ export class ChatManager {
   }
 
   private async handleChat(channel: string, tags: ChatUserstate, message: string, self: boolean) {
-    if (self) return;
+    // Self detection is not perfect, replies will go through
+    if (self || this.getUsername(tags) === env.TWITCH_LOGIN) return;
     const correlationId = getRandomString();
     const log = correlationIdLoggerFactory(correlationId);
     const login = normalizeChannelName(channel);
