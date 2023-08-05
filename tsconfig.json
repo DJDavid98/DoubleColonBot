@@ -16,10 +16,19 @@
     "sourceMap": true,
     "strict": true,
     "target": "ES2020",
-    "module": "CommonJS"
+    "module": "CommonJS",
+    "plugins": [
+      {
+        "transform": "typia/lib/transform"
+      }
+    ],
+    "strictNullChecks": true
   },
   "exclude": [
     "migrations"
   ],
-  "include": ["src", "config"]
+  "include": [
+    "src",
+    "config"
+  ]
 }

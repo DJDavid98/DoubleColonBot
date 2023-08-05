@@ -1,35 +1,31 @@
 import { Client } from 'pg';
-import { usersTable } from '../database/users-table';
+import { ChannelInfo, usersTable } from '../database/users-table';
 import { Logger } from '../model/logger';
+import { AppEventListener, AppEventManager } from './app-event-manager';
 
-export type ChannelsUpdateListener = (channels: string[]) => unknown;
+export type ChannelUpdatePayload = Array<ChannelInfo>;
+export type ChannelsUpdateListener = AppEventListener<ChannelUpdatePayload>;
 
 export class ChannelManager {
-  private channelList: string[];
+  private channelList: ChannelUpdatePayload;
 
-  private readonly updateListeners: Set<ChannelsUpdateListener>;
+  private readonly channelUpdateEventManager: AppEventManager<ChannelUpdatePayload>;
 
-  constructor(private db: Client) {
+  constructor(private db: Client, private logger: Logger) {
     this.channelList = [];
-    this.updateListeners = new Set();
+    this.channelUpdateEventManager = new AppEventManager();
   }
 
   addListener(listener: ChannelsUpdateListener) {
-    this.updateListeners.add(listener);
-  }
-
-  removeListener(listener: ChannelsUpdateListener) {
-    this.updateListeners.delete(listener);
+    this.channelUpdateEventManager.addListener(listener);
+    this.logger.debug('[ChannelManager] Registered a channel update event listener');
   }
 
   async updateChannels(logger: Logger) {
-    logger.info('Updating chanel list…');
+    logger.info('[ChannelManager] Updating chanel list…');
     const channelRows = await usersTable.selectLogins(this.db);
-    this.channelList = channelRows.rows.map(({ login }) => login);
-    logger.debug(`channelList: ${JSON.stringify(this.channelList)}`);
-    logger.info('Chanel list updated, notifying listeners…');
-    for (const listener of this.updateListeners) {
-      listener(this.channelList);
-    }
+    this.channelList = channelRows.rows;
+    logger.info('[ChannelManager] Chanel list updated, notifying listeners…');
+    this.channelUpdateEventManager.fireEvent(this.channelList);
   }
 }

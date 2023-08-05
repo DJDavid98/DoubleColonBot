@@ -10,7 +10,7 @@ import { formatCorrelationId } from '../utils/format-correlation-id';
  */
 export const correlationIdLoggerFactory = (correlationId: string): Logger => {
   const logger: LoggerFunction = (severity, message) =>
-    console[severity](`${severity}${formatCorrelationId(correlationId)}: ${message}`);
+    console[severity](`(${new Date().toISOString()}) ${severity}${formatCorrelationId(correlationId)}: ${message}`);
   const loggerCache: Partial<Logger> = {};
   return new Proxy(logger as Logger, {
     get(_, p) {

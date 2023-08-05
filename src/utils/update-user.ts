@@ -9,17 +9,20 @@ import { AccessToken } from '../validation/validate-access-token';
 import { UsersInput } from '../database/database-schema';
 import { Logger } from '../model/logger';
 import { ChannelManager } from '../classes/channel-manager';
+import { TwitchEventSubManager } from '../classes/twitch-event-sub-manager';
 
 export interface UpdateUserDeps {
   /**
    * When string is passed, this acts as a token refresher, otherwise it will write the provided token response to DB
    */
-  token: string | AccessToken;
+  token: string;
+  updateTokens: AccessToken | undefined;
   clientId: string;
   logger: Logger;
   getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
   db: Client;
   channelManager: ChannelManager;
+  twitchEventSubManager: TwitchEventSubManager;
 }
 
 /**
@@ -30,16 +33,10 @@ export interface UpdateUserDeps {
 export const updateUser = async (deps: UpdateUserDeps): Promise<JsonResponseProps> => {
   const now = dayjs();
 
-  const tokenString = typeof deps.token === 'string' ? deps.token : deps.token.access_token;
   deps.logger.debug('Updating user information…');
 
   // Grab the username
-  const fetchTwitchApiParams: FetchTwitchApiParams = {
-    token: tokenString,
-    clientId: deps.clientId,
-    logger: deps.logger,
-    getFreshAccessToken: deps.getFreshAccessToken,
-  };
+  const fetchTwitchApiParams: FetchTwitchApiParams = deps;
   const usersResponse = await fetchUsername(fetchTwitchApiParams).then(r => r.json());
   const users = validateUsers(usersResponse);
   if (!users.value || users.error) {
@@ -72,13 +69,13 @@ export const updateUser = async (deps: UpdateUserDeps): Promise<JsonResponseProp
     login,
     display_name,
   };
-  if (typeof deps.token !== 'string') {
+  if (deps.updateTokens !== undefined) {
     updateData = {
       ...updateData,
-      expires: now.add(deps.token.expires_in, 'seconds').toDate(),
-      scope: deps.token.scope,
-      access_token: deps.token.access_token,
-      refresh_token: deps.token.refresh_token,
+      expires: now.add(deps.updateTokens.expires_in, 'seconds').toDate(),
+      scope: deps.updateTokens.scope,
+      access_token: deps.updateTokens.access_token,
+      refresh_token: deps.updateTokens.refresh_token,
     };
   }
 

@@ -56,6 +56,7 @@ export const redirectTargetHandler = (deps: AppHandlerDependencies): RequestHand
     db: deps.db,
     getFreshAccessToken: deps.getFreshAccessToken,
     channelManager: deps.channelManager,
+    twitchEventSubManager: deps.twitchEventSubManager,
   });
 
   jsonResponse(appResponse);

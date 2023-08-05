@@ -17,6 +17,8 @@ import { correlationIdLoggerFactory } from './factories/correlation-id-logger-fa
 import { FetchTwitchApiParams } from './model/fetch-twitch-api-params';
 import { ChannelManager } from './classes/channel-manager';
 import { RedisManager } from './classes/redis-manager';
+import { TwitchEventSubManager } from './classes/twitch-event-sub-manager';
+import { UserTokenInfo } from './database/users-table';
 
 extend(relativeTime);
 
@@ -27,9 +29,10 @@ process.title = 'DoubleColonBot';
   let stateManager: StateManager;
   let accessTokenManager: AccessTokenManager;
   let channelManager: ChannelManager;
+  let twitchEventSubManager: TwitchEventSubManager;
   let redisManager: RedisManager;
   let getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
-  let botToken: string;
+  let botInfo: UserTokenInfo;
 
   const clientId = env.TWITCH_CLIENT_ID;
   const clientSecret = env.TWITCH_CLIENT_SECRET;
@@ -41,25 +44,46 @@ process.title = 'DoubleColonBot';
     publicDomain: env.PUBLIC_DOMAIN,
     logger: startupLogger,
   });
+  const getFetchTwitchApiParams = (logger: Logger) => ({
+    clientId,
+    token: botInfo.access_token,
+    getFreshAccessToken,
+    logger,
+  });
 
   try {
     db = await databaseClientFactory(startupLogger);
-    redisManager = new RedisManager();
-    await redisManager.initClient(startupLogger);
-    channelManager = new ChannelManager(db);
-    stateManager = new StateManager(db);
-    await stateManager.startCleanupInterval(startupLogger);
     accessTokenManager = new AccessTokenManager(db);
-
     getFreshAccessToken = async (logger: Logger, token: string) => {
-      const updatingBotToken = token === botToken;
-      await refreshToken({ logger, db, publicHost, access_token: token, clientId, clientSecret, channelManager });
+      const updatingBotToken = token === botInfo.access_token;
+      await refreshToken({
+        logger,
+        db,
+        publicHost,
+        access_token: token,
+        clientId,
+        clientSecret,
+        channelManager,
+        twitchEventSubManager,
+      });
       if (updatingBotToken) {
-        botToken = await accessTokenManager.getToken(logger, botUsername);
+        botInfo = await accessTokenManager.getToken(logger, botUsername);
       }
     };
+    twitchEventSubManager = new TwitchEventSubManager({
+      logger: startupLogger,
+      getFetchTwitchApiParams,
+      getBotInfo: () => botInfo,
+    });
+
+    channelManager = new ChannelManager(db, startupLogger);
+    redisManager = new RedisManager();
+    await redisManager.initClient(startupLogger);
+    stateManager = new StateManager(db);
+    await stateManager.startCleanupInterval(startupLogger);
+
     // Handlers need to be registered before verifying the token otherwise we can't use any of the endpoints
-    await registerAppHandlers(app, {
+    registerAppHandlers(app, {
       stateManager,
       publicHost,
       clientId,
@@ -68,6 +92,7 @@ process.title = 'DoubleColonBot';
       getFreshAccessToken,
       botUsername,
       channelManager,
+      twitchEventSubManager,
     });
     // Verify that we have the bot token on file
     await verifyBotAccessToken({
@@ -79,9 +104,10 @@ process.title = 'DoubleColonBot';
       logger: startupLogger,
       getFreshAccessToken,
       channelManager,
+      twitchEventSubManager,
     });
 
-    botToken = await accessTokenManager.getToken(startupLogger, botUsername);
+    botInfo = await accessTokenManager.getToken(startupLogger, botUsername);
   } catch (error) {
     startupLogger.error('Bot startup failure');
     console.error(error);
@@ -90,25 +116,36 @@ process.title = 'DoubleColonBot';
   }
 
   const chatManager = new ChatManager(db, {
-    options: { debug: env.NODE_ENV === 'development' },
-    identity: {
-      username: botUsername,
-      password: `oauth:${botToken}`,
-    },
-  }, {
     publicHost,
-    getFetchTwitchApiParams: (logger) => ({
-      clientId,
-      token: botToken,
-      getFreshAccessToken,
-      logger,
-    }),
+    getFetchTwitchApiParams,
     channelManager,
     websocketManager,
     redisManager,
+    twitchEventSubManager,
+    logger: startupLogger,
   });
 
-  await chatManager.waitForConnection(startupLogger);
+  await twitchEventSubManager.connect(startupLogger);
+  try {
+    await chatManager.connect(startupLogger, {
+      options: { debug: env.NODE_ENV === 'development' },
+      identity: {
+        username: botUsername,
+        password: `oauth:${botInfo.access_token}`,
+      },
+      connection: {
+        reconnect: true,
+        maxReconnectAttempts: 10,
+        reconnectInterval: 5,
+      },
+      logger: correlationIdLoggerFactory('ChatClient'),
+    });
+  } catch (error) {
+    startupLogger.error('Chat connection failure');
+    console.error(error);
+    process.exit(1);
+    return;
+  }
   await channelManager.updateChannels(startupLogger);
 
   startupLogger.info('Bot started successfully');

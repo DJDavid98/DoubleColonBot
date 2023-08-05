@@ -24,6 +24,8 @@ import { WebsocketMessageType } from '../constants/webocket-message-type';
 import { ChatSettings, ChatSettingsInput, tables } from '../database/database-schema';
 import { getExceptionMessage } from '../utils/get-exteption-message';
 import { env } from '../constants/env';
+import { TwitchEventSubManager } from './twitch-event-sub-manager';
+import { READ_FOLLOWERS_SCOPE } from '../constants/twitch';
 
 const commandRegex = /^!([\da-z]+)(?:\s+(.*))?$/i;
 
@@ -40,36 +42,50 @@ interface ChatManagerDeps {
   channelManager: ChannelManager;
   websocketManager: WebsocketManager;
   redisManager: RedisManager;
+  twitchEventSubManager: TwitchEventSubManager;
+  logger: Logger;
 }
 
 export class ChatManager {
-  private client: Client;
+  private client: Client | undefined;
 
-  constructor(private db: DbClient, options: Options, private deps: ChatManagerDeps) {
-    this.client = new Client(options);
-    this.client.on('chat', (...params) => {
-      // Ignore self messages
-      if (params[3]) return;
-      void this.handleChat(...params);
-    });
-    this.client.on('clearchat', (channel) => {
-      void this.deps.websocketManager.sendToRoom(normalizeChannelName(channel), WebsocketMessageType.clearChat);
-    });
+  constructor(private db: DbClient, private deps: ChatManagerDeps) {
     deps.channelManager.addListener(async newChannels => {
-      const currentChannels = this.client.getChannels().map((c) => normalizeChannelName(c));
+      deps.logger.debug('[ChatManager] channelManager listener called');
+      if (this.client) {
+        const currentChannels = this.client.getChannels().map((c) => normalizeChannelName(c));
 
-      const { joinChannels, partChannels } = calculateExpectedChannelsDiff(newChannels, currentChannels);
-      for (const joinChannel of joinChannels) {
-        await this.client.join(joinChannel);
+        const { joinChannels, partChannels } = calculateExpectedChannelsDiff(newChannels, currentChannels);
+        for (const joinChannel of joinChannels) {
+          await this.client.join(joinChannel.login);
+        }
+        for (const partChannel of partChannels) {
+          await this.client.part(partChannel);
+        }
       }
-      for (const partChannel of partChannels) {
-        await this.client.part(partChannel);
+
+      for (const updateData of newChannels) {
+        const broadcasterId = updateData.id;
+        const requiredScope = READ_FOLLOWERS_SCOPE;
+        if (Array.isArray(updateData.scope) && updateData.scope.includes(requiredScope)) {
+          void deps.twitchEventSubManager.subscribeToFollowEvents([{ broadcasterId }]);
+        } else {
+          deps.logger.info(`[ChatManager] Missing ${requiredScope} from broadcaster #${broadcasterId}, not subscribing to follow events`);
+        }
       }
+    });
+    deps.twitchEventSubManager.addFollowEventListener((data) => {
+      this.deps.websocketManager.sendToRoom(data.broadcaster_user_login, WebsocketMessageType.follow);
     });
   }
 
-  async waitForConnection(log: Logger) {
-    log.debug('Waiting for WS client connection…');
+  async connect(log: Logger, options: Options) {
+    log.debug('[ChatManager] Waiting for WS client connection…');
+    this.client = new Client(options);
+    this.client.on('chat', this.handleChat.bind(this));
+    this.client.on('clearchat', (channel) => {
+      void this.deps.websocketManager.sendToRoom(normalizeChannelName(channel), WebsocketMessageType.clearChat);
+    });
     await this.client.connect();
   }
 
@@ -125,13 +141,12 @@ export class ChatManager {
       return;
     }
 
-    const messageReply: MessageReply = (reply, success = false) => {
+    const messageReply: MessageReply = async (reply, success = false): Promise<void> => {
       let replyText = reply;
       if (!success) {
         replyText += ` ${formatCorrelationId(correlationId)}`;
       }
-      return this.client.raw(`@reply-parent-msg-id=${tags.id} PRIVMSG ${channel} :${replyText}`);
-      // return this.client.say(channel, `@${tags.username} ${replyText}`);
+      await this.client?.raw(`@reply-parent-msg-id=${tags.id} PRIVMSG ${channel} :${replyText}`);
     };
     return this.handleCommand(login, messageReply, log, tags, parsedCommand.name, parsedCommand.params);
   }

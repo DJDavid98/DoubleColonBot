@@ -5,6 +5,7 @@ import { Logger } from '../model/logger';
 import { updateUser } from './update-user';
 import { FetchTwitchApiParams } from '../model/fetch-twitch-api-params';
 import { ChannelManager } from '../classes/channel-manager';
+import { TwitchEventSubManager } from '../classes/twitch-event-sub-manager';
 
 export interface HandleAccessTokenUpdateDeps {
   tokenResponse: unknown;
@@ -13,6 +14,7 @@ export interface HandleAccessTokenUpdateDeps {
   logger: Logger;
   getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
   channelManager: ChannelManager;
+  twitchEventSubManager: TwitchEventSubManager;
 }
 
 export const handleAccessTokenUpdate = async (deps: HandleAccessTokenUpdateDeps): Promise<JsonResponseProps> => {
@@ -28,5 +30,5 @@ export const handleAccessTokenUpdate = async (deps: HandleAccessTokenUpdateDeps)
     };
   }
 
-  return updateUser({ ...deps, token: token.value });
+  return updateUser({ ...deps, token: token.value.access_token, updateTokens: token.value });
 };

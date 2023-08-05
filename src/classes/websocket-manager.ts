@@ -21,6 +21,7 @@ export class WebsocketManager {
   private joinRoom(socket: Socket, roomName: string) {
     socket.join(roomName);
     this.logger.debug(`Socket ${socket.id} joined room ${roomName}`);
+    socket.emit('joinedRoom', roomName);
   }
 
   public sendToRoom<EventType extends keyof ServerToClientEvents>(roomName: string, type: EventType, ...message: Parameters<ServerToClientEvents[EventType]>) {

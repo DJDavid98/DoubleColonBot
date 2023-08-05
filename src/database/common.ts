@@ -27,9 +27,9 @@ export const runInsertQuery = <Table extends keyof TableTypes>(db: Client, table
   let columnData = filteredColumns.map(col => {
     const key = col as keyof typeof params;
     return key in params ? params[key] : null;
-  });
+  }) as unknown[];
   let sql = `INSERT INTO ${table} (${columnNames})
-             VALUES (${columnPlaceholders})`;
+  VALUES (${columnPlaceholders})`;
   const availableUpsertCols = upsertCols?.filter(upsertCol => filteredColumnsSet.has(upsertCol));
   if (availableUpsertCols && 'id' in params) {
     sql += ` ON CONFLICT (id) DO UPDATE SET ${availableUpsertCols.map((upsertCol) => `${upsertCol} = $${paramIndex++}`).join(', ')};`;
@@ -44,5 +44,5 @@ export const cleanStaleRecords = <Table extends keyof TableTypes>(
   field: DateKeys<TableTypes[Table]['select']>,
   staleTimeMs: number) =>
     db.query(`DELETE
-            FROM ${table}
-            WHERE ${field} + INTERVAL '${Math.round(staleTimeMs / 1e3)} SECOND' < NOW()`);
+  FROM ${table}
+  WHERE ${field} + INTERVAL '${Math.round(staleTimeMs / 1e3)} SECOND' < NOW()`);

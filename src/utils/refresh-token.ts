@@ -4,6 +4,7 @@ import { fetchAccessToken } from './fetch-access-token';
 import { handleAccessTokenUpdate } from './handle-access-token-update';
 import { Logger } from '../model/logger';
 import { ChannelManager } from '../classes/channel-manager';
+import { TwitchEventSubManager } from '../classes/twitch-event-sub-manager';
 
 interface RefreshTokenParams {
   db: Client;
@@ -13,6 +14,7 @@ interface RefreshTokenParams {
   clientSecret: string;
   logger: Logger;
   channelManager: ChannelManager;
+  twitchEventSubManager: TwitchEventSubManager;
 }
 
 export const refreshToken = async ({
@@ -23,6 +25,7 @@ export const refreshToken = async ({
   clientSecret,
   logger,
   channelManager,
+  twitchEventSubManager,
 }: RefreshTokenParams): Promise<void> => {
   const user = await usersTable.selectRefreshToken(db, access_token).then(({ rows }) => rows[0]);
   if (!user || !user.refresh_token) {
@@ -46,6 +49,7 @@ export const refreshToken = async ({
     // We're in the function that's supposed to refresh the token, if this fails all hope is lost
     getFreshAccessToken: null,
     channelManager,
+    twitchEventSubManager,
   });
   if (appResponse.log) {
     logger(appResponse.log.severity, appResponse.log.message);
