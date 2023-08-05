@@ -19,6 +19,6 @@ export interface DonationWebsocketMessage {
 export interface ChatWebsocketMessage {
   name: string;
   message: string;
-  pronouns: string | null;
+  pronouns: string[];
   tags: ChatUserstate;
 }

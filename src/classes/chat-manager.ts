@@ -189,7 +189,7 @@ export class ChatManager {
 
     const displayName = this.getDisplayName(inputTags);
     const tags = await this.getEnhancedTags(username, inputTags);
-    const pronouns = await this.getPronounManager(log).getPronoun(username);
+    const pronouns = await this.getPronounManager(log).getPronouns(username);
     this.deps.websocketManager.sendToRoom(login, WebsocketMessageType.chat, {
       name: displayName || username,
       message,
@@ -305,14 +305,15 @@ export class ChatManager {
         } else {
           targetUser = login;
         }
-        let pronouns = null;
+        let pronouns = [];
         try {
-          pronouns = await pronounManager.getPronoun(targetUser);
-        } catch {
+          pronouns = await pronounManager.getPronouns(targetUser);
+        } catch (error) {
+          log('error', `Failed to get pronouns for ${targetUser}: ${getExceptionMessage(error)}`);
           return reply('Could not retrieve streamer\'s pronouns');
         }
 
-        if (pronouns === null) {
+        if (pronouns.length === 0) {
           if (targetUser === login && this.isStreamer(targetUser, tags)) {
             return reply(`You don't seem to have your pronouns set, visit ${PronounManager.serviceUrl} to change it (updates in ~5 minutes)`, true);
           }
@@ -320,7 +321,7 @@ export class ChatManager {
           return reply(`Seems like ${targetUser} hasn't set their pronouns`, true);
         }
 
-        return reply(`${targetUser} uses ${pronouns} pronouns`, true);
+        return reply(`${targetUser} uses ${pronouns.join('/')} pronouns`, true);
       }
       case CommandName.category:
       case CommandName.game: {

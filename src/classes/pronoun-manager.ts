@@ -17,34 +17,52 @@ export class PronounManager {
 
   constructor(private redisManager: RedisManager, private logger: Logger) {}
 
-  async getPronoun(login: string): Promise<string | null> {
+  async getPronouns(login: string): Promise<string[]> {
     // Use empty string to denote a known unknown value
     const cacheKey = this.getUserPronounCacheKey(login);
-    let userPronoun = await this.redisManager.get(this.logger, cacheKey);
-    if (userPronoun === null) {
+    const userPronouns: string[] = [];
+    const cacheValue = await this.redisManager.get(this.logger, cacheKey);
+    let rawPronounData: unknown;
+    let dataFromCache = false;
+    if (cacheValue !== null) {
+      try {
+        rawPronounData = JSON.parse(cacheValue);
+        dataFromCache = true;
+        this.logger.debug('Loaded pronoun data from cache');
+      } catch (error) {
+        this.logger.error(`Could not parse cached pronoun data: ${getExceptionMessage(error)}`);
+      }
+      return JSON.parse(cacheValue);
+    }
+    if (!rawPronounData) {
       const apiUsername = encodeURIComponent(login.toLowerCase());
       this.logger.debug(`Fetching user pronoun data from API for username ${apiUsername}`);
-      const result = await this.fetchData(`/api/users/${apiUsername}`);
-      this.logger.debug(`Received user pronoun data from API for username: ${JSON.stringify(result)}`);
-      const validatedResult = validateUserPronounApiResponse(result);
-      if (validatedResult.error) {
-        this.logger.error(`Could not validate user pronoun API response:\n${validatedResult.error.annotate()}`);
-        return null;
-      }
-
-      userPronoun = '';
-      if (validatedResult.value.length > 0) {
-        const userPronounId = validatedResult.value[0].pronoun_id;
-        const pronounData = await this.getPronounData();
-        if (!pronounData) return null;
-
-        userPronoun = pronounData?.[userPronounId] || '';
-      }
-      await this.redisManager.put(this.logger, cacheKey, userPronoun, this.cacheDurationSeconds);
+      rawPronounData = await this.fetchData(`/api/users/${apiUsername}`);
+      this.logger.debug(`Received user pronoun data from API for username: ${JSON.stringify(rawPronounData)}`);
+    }
+    const validatedResult = validateUserPronounApiResponse(rawPronounData);
+    if (validatedResult.error) {
+      this.logger.error(`Could not validate user pronoun API response:\n${validatedResult.error.annotate()}`);
+      return [];
     }
 
-    // May be empty string, fall back to null in that case
-    return userPronoun.length > 0 ? userPronoun : null;
+    if (validatedResult.value.length > 0) {
+      const pronounData = await this.getPronounData();
+      if (!pronounData) return [];
+
+      for (const value of validatedResult.value) {
+        const userPronounId = value.pronoun_id;
+        const label = pronounData?.[userPronounId];
+        if (label) {
+          userPronouns.push(label);
+        }
+      }
+    }
+    if (!dataFromCache) {
+      await this.redisManager.put(this.logger, cacheKey, JSON.stringify(userPronouns), this.cacheDurationSeconds);
+    }
+
+    return userPronouns;
   }
 
   private async getPronounData(): Promise<PronounData | null> {
