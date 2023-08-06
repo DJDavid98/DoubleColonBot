@@ -11,14 +11,11 @@ import { ChatManager } from './classes/chat-manager';
 
 import { extend } from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { refreshToken } from './utils/refresh-token';
 import { Logger } from './model/logger';
 import { correlationIdLoggerFactory } from './factories/correlation-id-logger-factory';
-import { FetchTwitchApiParams } from './model/fetch-twitch-api-params';
 import { ChannelManager } from './classes/channel-manager';
 import { RedisManager } from './classes/redis-manager';
 import { TwitchEventSubManager } from './classes/twitch-event-sub-manager';
-import { UserTokenInfo } from './database/users-table';
 
 extend(relativeTime);
 
@@ -31,8 +28,6 @@ process.title = 'DoubleColonBot';
   let channelManager: ChannelManager;
   let twitchEventSubManager: TwitchEventSubManager;
   let redisManager: RedisManager;
-  let getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
-  let botInfo: UserTokenInfo;
 
   const clientId = env.TWITCH_CLIENT_ID;
   const clientSecret = env.TWITCH_CLIENT_SECRET;
@@ -44,39 +39,33 @@ process.title = 'DoubleColonBot';
     publicDomain: env.PUBLIC_DOMAIN,
     logger: startupLogger,
   });
-  const getFetchTwitchApiParams = (logger: Logger) => ({
-    clientId,
-    token: botInfo.access_token,
-    getFreshAccessToken,
-    logger,
-  });
+  const getFetchTwitchApiParams = async (logger: Logger) => {
+    const botInto = await accessTokenManager.getBotInfo();
+    return ({
+      clientId,
+      token: botInto.access_token,
+      accessTokenManager,
+      logger,
+    });
+  };
 
   try {
     db = await databaseClientFactory(startupLogger);
-    accessTokenManager = new AccessTokenManager(db);
-    getFreshAccessToken = async (logger: Logger, token: string) => {
-      const updatingBotToken = token === botInfo.access_token;
-      await refreshToken({
-        logger,
-        db,
-        publicHost,
-        access_token: token,
-        clientId,
-        clientSecret,
-        channelManager,
-        twitchEventSubManager,
-      });
-      if (updatingBotToken) {
-        botInfo = await accessTokenManager.getToken(logger, botUsername);
-      }
-    };
+    channelManager = new ChannelManager(db, startupLogger);
     twitchEventSubManager = new TwitchEventSubManager({
       logger: startupLogger,
       getFetchTwitchApiParams,
-      getBotInfo: () => botInfo,
+      getBotInfo: () => accessTokenManager.getBotInfo(),
+    });
+    accessTokenManager = new AccessTokenManager({
+      db,
+      publicHost,
+      channelManager,
+      twitchEventSubManager,
+      botUsername,
+      logger: startupLogger,
     });
 
-    channelManager = new ChannelManager(db, startupLogger);
     redisManager = new RedisManager();
     await redisManager.initClient(startupLogger);
     stateManager = new StateManager(db);
@@ -89,7 +78,7 @@ process.title = 'DoubleColonBot';
       clientId,
       clientSecret,
       db,
-      getFreshAccessToken,
+      accessTokenManager,
       botUsername,
       channelManager,
       twitchEventSubManager,
@@ -102,12 +91,9 @@ process.title = 'DoubleColonBot';
       clientId,
       db,
       logger: startupLogger,
-      getFreshAccessToken,
       channelManager,
       twitchEventSubManager,
     });
-
-    botInfo = await accessTokenManager.getToken(startupLogger, botUsername);
   } catch (error) {
     startupLogger.error('Bot startup failure');
     console.error(error);
@@ -115,7 +101,9 @@ process.title = 'DoubleColonBot';
     return;
   }
 
-  const chatManager = new ChatManager(db, {
+  const chatManager = new ChatManager({
+    db,
+    accessTokenManager,
     publicHost,
     getFetchTwitchApiParams,
     channelManager,
@@ -127,6 +115,7 @@ process.title = 'DoubleColonBot';
 
   await twitchEventSubManager.connect(startupLogger);
   try {
+    const botInfo = await accessTokenManager.getBotInfo();
     await chatManager.connect(startupLogger, {
       options: { debug: env.NODE_ENV === 'development' },
       identity: {

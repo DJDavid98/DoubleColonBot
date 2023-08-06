@@ -1,8 +1,9 @@
 import { Logger } from './logger';
+import { AccessTokenManager } from '../classes/access-token-manager';
 
 export interface FetchTwitchApiParams {
   token: string;
   clientId: string;
   logger: Logger;
-  getFreshAccessToken: ((log: Logger, token: string) => Promise<void>) | null;
+  accessTokenManager: AccessTokenManager | null;
 }

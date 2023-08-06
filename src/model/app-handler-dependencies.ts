@@ -1,8 +1,8 @@
 import { StateManager } from '../classes/state-manager';
 import { Client } from 'pg';
-import { FetchTwitchApiParams } from './fetch-twitch-api-params';
 import { ChannelManager } from '../classes/channel-manager';
 import { TwitchEventSubManager } from '../classes/twitch-event-sub-manager';
+import { AccessTokenManager } from '../classes/access-token-manager';
 
 export interface AppHandlerDependencies {
   publicHost: string;
@@ -11,7 +11,7 @@ export interface AppHandlerDependencies {
   clientSecret: string;
   stateManager: StateManager;
   db: Client;
-  getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
+  accessTokenManager: AccessTokenManager;
   channelManager: ChannelManager,
   twitchEventSubManager: TwitchEventSubManager,
 }

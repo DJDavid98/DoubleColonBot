@@ -11,12 +11,12 @@ export interface UserTokenInfo {
 }
 
 export const usersTable = {
-  selectUser: (db: Client, login: Users['login']) =>
-    db.query<TableTypes['users']['select']>('SELECT * FROM users WHERE login = $1', [login]),
-  selectUserTokenInfo: (db: Client, login: Users['login']) =>
+  selectUserTokenInfo: <Column extends keyof Users>(db: Client, column: Column, value: Users[Column]) =>
     db.query<Pick<TableTypes['users']['select'], 'id' | 'access_token' | 'expires'>>(
-      'SELECT id, access_token, expires FROM users WHERE login = $1',
-      [login],
+      `SELECT id, access_token, expires
+      FROM users
+      WHERE ${column} = $1`,
+      [value],
     ),
   createUser: (db: Client, params: UsersInput) =>
     runInsertQuery(db, 'users', params, [

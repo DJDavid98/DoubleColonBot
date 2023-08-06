@@ -2,6 +2,7 @@ import { AccessTokenManager } from '../classes/access-token-manager';
 import { waitForKeyPress } from './wait-for-keypress';
 import { updateUser, UpdateUserDeps } from './update-user';
 import { TwitchEventSubManager } from '../classes/twitch-event-sub-manager';
+import { getAuthStartUrl } from './get-auth-start-url';
 
 interface ReadAuthCodeDeps extends Omit<UpdateUserDeps, 'token' | 'updateTokens'> {
   publicHost: string;
@@ -18,7 +19,7 @@ export const verifyBotAccessToken = async (deps: ReadAuthCodeDeps): Promise<void
     });
 
     if (!token) {
-      deps.logger.warn(`[verifyBotAccessToken] No access token found for bot user ${deps.botUsername}, please authenticate using the URL below:\n${deps.publicHost}`);
+      deps.logger.warn(`[verifyBotAccessToken] No access token found for bot user ${deps.botUsername}, please authenticate using the URL below:\n${getAuthStartUrl(deps.publicHost)}`);
 
       // Wait for user to press a key before trying again
       deps.logger.info('[verifyBotAccessToken] Waiting for authentication, press any key when finished…');

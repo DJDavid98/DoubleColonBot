@@ -1,7 +1,9 @@
 import {
   FollowEventSubscription,
+  TwitchEventSubChannelFollowCondition,
+  TwitchEventSubFollowNotificationMessage,
+  TwitchEventSubFollowNotificationMessageEventData,
   TwitchEventSubMessageTypeMap,
-  TwitchEventSubNotificationMessageEventData,
 } from '../model/twicth-event-sub';
 import {
   isValidateTwitchEventSubSubscription,
@@ -19,21 +21,20 @@ import { DeferredPromise } from './deferred-promise';
 import { KeepaliveManager } from './keepalive-manager';
 import { correlationIdLoggerFactory } from '../factories/correlation-id-logger-factory';
 import { getRandomUuid } from '../utils/random';
-import { UserTokenInfo } from '../database/users-table';
 import { getExceptionMessage } from '../utils/get-exteption-message';
+import { UserTokenInfo } from '../database/users-table';
 
 type MessageTypeHandlers = {
   [k in keyof TwitchEventSubMessageTypeMap]: (data: TwitchEventSubMessageTypeMap[k]) => void | Promise<void>
 };
 
-export type FollowEventPayload = TwitchEventSubNotificationMessageEventData;
-
+export type FollowEventPayload = TwitchEventSubFollowNotificationMessageEventData;
 export type FollowEventListener = AppEventListener<FollowEventPayload>;
 
 interface TwitchEventSubManagerParams {
   logger: Logger;
-  getFetchTwitchApiParams: (logger: Logger) => FetchTwitchApiParams;
-  getBotInfo: () => UserTokenInfo;
+  getFetchTwitchApiParams: (logger: Logger) => Promise<FetchTwitchApiParams>;
+  getBotInfo: () => Promise<UserTokenInfo>;
 }
 
 export class TwitchEventSubManager {
@@ -41,20 +42,17 @@ export class TwitchEventSubManager {
 
   private reConnection: WebSocket | null = null;
 
-  private sessionId: DeferredPromise<string>;
+  private sessionId: DeferredPromise<string> = new DeferredPromise();
 
   private readonly messageTypeHandlers: MessageTypeHandlers;
 
-  private followEventSubscriptions: Array<FollowEventSubscription>;
+  private followEventSubscriptions: Array<FollowEventSubscription> = [];
 
-  private readonly followEventManager: AppEventManager<FollowEventPayload>;
+  private readonly followEventManager = new AppEventManager<FollowEventPayload>();
 
   private readonly keepaliveManager: KeepaliveManager | undefined;
 
   constructor(private readonly deps: TwitchEventSubManagerParams) {
-    this.followEventSubscriptions = [];
-    this.followEventManager = new AppEventManager();
-    this.sessionId = new DeferredPromise();
     this.keepaliveManager = new KeepaliveManager('TwitchEventSub', 5e3);
     this.messageTypeHandlers = {
       session_welcome: async (data) => {
@@ -73,22 +71,31 @@ export class TwitchEventSubManager {
         await this.reconnect(data.payload.session.reconnect_url);
       },
       notification: (data) => {
-        if (data.payload.subscription.type === 'channel.follow') {
-          this.followEventManager.fireEvent(data.payload.event);
+        switch (data.payload.subscription.type) {
+          case 'channel.follow': {
+            this.followEventManager.fireEvent((data as TwitchEventSubFollowNotificationMessage).payload.event);
+            break;
+          }
         }
       },
       revocation: async (data) => {
         switch (data.payload.subscription.type) {
           case 'channel.follow': {
             // Remove revoked subscription from the list
-            await this.unsubscribeFromFollowEvents({
-              broadcasterId: data.payload.subscription.condition.broadcaster_user_id,
+            await this.unsubscribeFromFollowEvents(this.deps.logger, {
+              broadcasterId: (data.payload.subscription.condition as TwitchEventSubChannelFollowCondition).broadcaster_user_id,
             });
             return;
           }
         }
       },
     };
+
+    process.on('exit', () => {
+      this.deps.logger.info('[TwitchEventSubManager] Process exiting, closing connection…');
+      this.connection?.close();
+      this.reConnection?.close();
+    });
   }
 
   async connect(logger: Logger): Promise<void> {
@@ -100,22 +107,18 @@ export class TwitchEventSubManager {
     this.followEventSubscriptions = [...this.followEventSubscriptions, ...(await this.processFollowEventsSubs(subs))];
   }
 
-  async unsubscribeFromFollowEvents(sub: FollowEventSubscription): Promise<void> {
+  async unsubscribeFromFollowEvents(logger: Logger, sub: FollowEventSubscription): Promise<void> {
     this.followEventSubscriptions = this.followEventSubscriptions.filter(value =>
       // Remove revoked subscription from the list
       sub.broadcasterId !== value.broadcasterId,
     );
     if (sub.id) {
-      await fetchTwitchApiEndpoint(this.getFetchTwitchApiParams(), TwitchApiEndpoint.DELETE_EVENTSUB_SUBSCRIPTION, { id: sub.id });
+      await fetchTwitchApiEndpoint(await this.deps.getFetchTwitchApiParams(logger), TwitchApiEndpoint.DELETE_EVENTSUB_SUBSCRIPTION, { id: sub.id });
     }
   }
 
   addFollowEventListener(listener: FollowEventListener) {
     this.followEventManager.addListener(listener);
-  }
-
-  private getFetchTwitchApiParams() {
-    return this.deps.getFetchTwitchApiParams(this.deps.logger);
   }
 
   private async reconnect(connectionUrl?: string) {
@@ -162,7 +165,7 @@ export class TwitchEventSubManager {
   }
 
   private async processFollowEventsSubs(subs: Array<FollowEventSubscription>): Promise<Array<FollowEventSubscription>> {
-    const logger = correlationIdLoggerFactory(`TwitchEventSubManager:${getRandomUuid()}`);
+    const logger = correlationIdLoggerFactory(`TwitchEventSubManager#processFollowEventsSubs:${getRandomUuid()}`);
     const sessionId = await this.sessionId.promise;
     const existingSubscriptions = keyBy(this.followEventSubscriptions, (v: FollowEventSubscription) => v.broadcasterId);
     // Register subscriptions and add their IDs
@@ -176,9 +179,10 @@ export class TwitchEventSubManager {
       }
 
       logger('info', `Creating new follow event subscription for broadcaster #${broadcasterId}…`);
-      const response = await fetchTwitchApiEndpoint(this.getFetchTwitchApiParams(), TwitchApiEndpoint.POST_EVENTSUB_SUBSCRIPTION, {
+      const botInfo = await this.deps.getBotInfo();
+      const response = await fetchTwitchApiEndpoint(await this.deps.getFetchTwitchApiParams(logger), TwitchApiEndpoint.POST_FOLLOW_EVENTSUB_SUBSCRIPTION, {
         broadcaster_user_id: broadcasterId,
-        moderator_user_id: this.deps.getBotInfo().id,
+        moderator_user_id: botInfo.id,
         session_id: sessionId,
       });
       if (!response.ok) {

@@ -7,19 +7,11 @@ import { JsonResponseProps } from '../factories/json-response-factory';
 import { Client } from 'pg';
 import { AccessToken } from '../validation/validate-access-token';
 import { UsersInput } from '../database/database-schema';
-import { Logger } from '../model/logger';
 import { ChannelManager } from '../classes/channel-manager';
 import { TwitchEventSubManager } from '../classes/twitch-event-sub-manager';
 
-export interface UpdateUserDeps {
-  /**
-   * When string is passed, this acts as a token refresher, otherwise it will write the provided token response to DB
-   */
-  token: string;
+export interface UpdateUserDeps extends FetchTwitchApiParams {
   updateTokens: AccessToken | undefined;
-  clientId: string;
-  logger: Logger;
-  getFreshAccessToken: FetchTwitchApiParams['getFreshAccessToken'];
   db: Client;
   channelManager: ChannelManager;
   twitchEventSubManager: TwitchEventSubManager;
@@ -36,8 +28,7 @@ export const updateUser = async (deps: UpdateUserDeps): Promise<JsonResponseProp
   deps.logger.debug('Updating user information…');
 
   // Grab the username
-  const fetchTwitchApiParams: FetchTwitchApiParams = deps;
-  const usersResponse = await fetchUsername(fetchTwitchApiParams).then(r => r.json());
+  const usersResponse = await fetchUsername(deps).then(r => r.json());
   const users = validateUsers(usersResponse);
   if (!users.value || users.error) {
     return {

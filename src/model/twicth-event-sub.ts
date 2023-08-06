@@ -1,6 +1,6 @@
 import { identityMap } from '../utils/identity-map';
 
-export type TwitchEventSubSubscriptionType = 'channel.follow';
+export type TwitchEventSubSubscriptionType = 'channel.follow' | 'channel.ban';
 
 export const TwitchEventSubMessageType = identityMap([
   'session_welcome',
@@ -49,15 +49,13 @@ export interface TwitchEventSubReconnectMessage {
   };
 }
 
-interface TwitchEventSubNotificationMessageSubscriptionData {
+interface TwitchEventSubNotificationMessageSubscriptionData<Type extends TwitchEventSubSubscriptionType, Condition> {
   id: string;
   status: string;
-  type: TwitchEventSubSubscriptionType;
+  type: Type;
   version: string;
   cost: number;
-  condition: {
-    broadcaster_user_id: string;
-  };
+  condition: Condition;
   transport: {
     method: 'websocket';
     session_id: string;
@@ -65,7 +63,10 @@ interface TwitchEventSubNotificationMessageSubscriptionData {
   created_at: string;
 }
 
-export interface TwitchEventSubNotificationMessageEventData {
+/**
+ * @see https://dev.twitch.tv/docs/eventsub/eventsub-reference/#channel-follow-event
+ */
+export interface TwitchEventSubFollowNotificationMessageEventData {
   user_id: string;
   user_login: string;
   user_name: string;
@@ -75,11 +76,48 @@ export interface TwitchEventSubNotificationMessageEventData {
   followed_at: string;
 }
 
-export interface TwitchEventSubNotificationMessage {
+/**
+ * @see https://dev.twitch.tv/docs/eventsub/eventsub-reference/#channel-ban-event
+ */
+export interface TwitchEventSubBanNotificationMessageEventData {
+  user_id: string;
+  user_login: string;
+  user_name: string;
+  broadcaster_user_id: string;
+  broadcaster_user_login: string;
+  broadcaster_user_name: string;
+  moderator_user_id: string;
+  moderator_user_login: string;
+  moderator_user_name: string;
+  reason: string;
+  banned_at: string;
+  ends_at: string | null;
+  is_permanent: boolean;
+}
+
+export interface TwitchEventSubChannelFollowCondition {
+  broadcaster_user_id: string;
+  moderator_user_id: string;
+}
+
+export interface TwitchEventSubFollowNotificationMessage {
   metadata: BaseTwitchEventSubMessageMetadata<'notification'>;
   payload: {
-    subscription: TwitchEventSubNotificationMessageSubscriptionData;
-    event: TwitchEventSubNotificationMessageEventData;
+    subscription: TwitchEventSubNotificationMessageSubscriptionData<'channel.follow', TwitchEventSubChannelFollowCondition>;
+    event: TwitchEventSubFollowNotificationMessageEventData;
+  };
+}
+
+
+export interface TwitchEventSubChannelBanCondition {
+  broadcaster_user_id: string;
+}
+
+export interface TwitchEventSubBanNotificationMessage {
+  metadata: BaseTwitchEventSubMessageMetadata<'notification'>;
+  payload: {
+    subscription: TwitchEventSubNotificationMessageSubscriptionData<'channel.ban', TwitchEventSubChannelBanCondition>;
+    event: TwitchEventSubBanNotificationMessageEventData;
   };
 }
 
@@ -89,7 +127,7 @@ export interface TwitchEventSubRevocationMessage {
     subscription_version: string;
   };
   payload: {
-    subscription: TwitchEventSubNotificationMessageSubscriptionData;
+    subscription: TwitchEventSubNotificationMessageSubscriptionData<TwitchEventSubSubscriptionType, unknown>;
   };
 }
 
@@ -97,7 +135,7 @@ export type TwitchEventSubMessageTypeMap = {
   [TwitchEventSubMessageType.session_welcome]: TwitchEventSubWelcomeMessage;
   [TwitchEventSubMessageType.session_keepalive]: TwitchEventSubKeepaliveMessage;
   [TwitchEventSubMessageType.session_reconnect]: TwitchEventSubReconnectMessage;
-  [TwitchEventSubMessageType.notification]: TwitchEventSubNotificationMessage;
+  [TwitchEventSubMessageType.notification]: TwitchEventSubFollowNotificationMessage | TwitchEventSubBanNotificationMessage;
   [TwitchEventSubMessageType.revocation]: TwitchEventSubRevocationMessage;
 };
 export type TwitchEventSubMessage = TwitchEventSubMessageTypeMap[keyof TwitchEventSubMessageTypeMap];
@@ -125,6 +163,15 @@ export interface TwitchEventSubSubscription {
 }
 
 export interface FollowEventSubscription {
+  broadcasterId: string;
+  /**
+   * Only defined for existing subscriptions
+   */
+  id?: string;
+}
+
+
+export interface BanEventSubscription {
   broadcasterId: string;
   /**
    * Only defined for existing subscriptions

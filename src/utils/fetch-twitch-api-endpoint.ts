@@ -17,7 +17,26 @@ const getTwitchEndpointPath = <E extends TwitchApiEndpoint>(
   // noinspection JSUnreachableSwitchBranches
   switch (endpoint) {
     case TwitchApiEndpoint.GET_USERS: {
-      return '/users';
+      const { id, login } = params as TwitchApiEndpointParams[TwitchApiEndpoint.GET_USERS];
+      const queryParams = [];
+      if (id) for (const idValue of id) {
+        queryParams.push(`id=${encodeURIComponent(idValue)}`);
+      }
+      if (login) for (const loginValue of login) {
+        queryParams.push(`login=${encodeURIComponent(loginValue)}`);
+      }
+      return `/users${queryParams.length > 0 ? `?${queryParams.join('&')}` : ''}`;
+    }
+    case TwitchApiEndpoint.GET_BANNED_USERS: {
+      const { user_id, broadcaster_id, first, after, before } = params as TwitchApiEndpointParams[TwitchApiEndpoint.GET_BANNED_USERS];
+      const queryParams = [`broadcaster_id=${encodeURIComponent(broadcaster_id)}`];
+      if (user_id) for (const idValue of user_id) {
+        queryParams.push(`user_id=${encodeURIComponent(idValue)}`);
+      }
+      if (typeof first === 'number') queryParams.push(`first=${first}`);
+      if (typeof before === 'string') queryParams.push(`before=${encodeURIComponent(before)}`);
+      if (typeof after === 'string') queryParams.push(`after=${encodeURIComponent(after)}`);
+      return `/moderation/banned${queryParams.length > 0 ? `?${queryParams.join('&')}` : ''}`;
     }
     case TwitchApiEndpoint.GET_SEARCH_CATEGORIES: {
       const { first, after, query } = params as TwitchApiEndpointParams[TwitchApiEndpoint.GET_SEARCH_CATEGORIES];
@@ -31,7 +50,16 @@ const getTwitchEndpointPath = <E extends TwitchApiEndpoint>(
       const queryParams = new URLSearchParams({ broadcaster_id });
       return `/channels?${queryParams}`;
     }
-    case TwitchApiEndpoint.POST_EVENTSUB_SUBSCRIPTION: {
+    case TwitchApiEndpoint.GET_CHANNELS_FOLLOWERS: {
+      const { user_id, broadcaster_id, first, after } = params as TwitchApiEndpointParams[TwitchApiEndpoint.GET_CHANNELS_FOLLOWERS];
+      const queryParams = new URLSearchParams({ broadcaster_id });
+      if (typeof user_id === 'string') queryParams.set('user_id', user_id);
+      if (typeof first === 'number') queryParams.set('first', String(first));
+      if (typeof after === 'string') queryParams.set('after', after);
+      return `/channels/followers?${queryParams}`;
+    }
+    case TwitchApiEndpoint.POST_BAN_EVENTSUB_SUBSCRIPTION:
+    case TwitchApiEndpoint.POST_FOLLOW_EVENTSUB_SUBSCRIPTION: {
       return '/eventsub/subscriptions';
     }
     case TwitchApiEndpoint.DELETE_EVENTSUB_SUBSCRIPTION: {
@@ -56,18 +84,35 @@ const getTwitchEndpointBody = <E extends TwitchApiEndpoint>(
       const { game_id } = params as TwitchApiEndpointParams[TwitchApiEndpoint.PATCH_CHANNELS];
       return new URLSearchParams({ game_id });
     }
-    case TwitchApiEndpoint.POST_EVENTSUB_SUBSCRIPTION: {
+    case TwitchApiEndpoint.POST_FOLLOW_EVENTSUB_SUBSCRIPTION: {
       const {
         broadcaster_user_id,
         moderator_user_id,
         session_id,
-      } = params as TwitchApiEndpointParams[TwitchApiEndpoint.POST_EVENTSUB_SUBSCRIPTION];
+      } = params as TwitchApiEndpointParams[TwitchApiEndpoint.POST_FOLLOW_EVENTSUB_SUBSCRIPTION];
       return JSON.stringify({
         type: 'channel.follow',
         version: '2',
         condition: {
           broadcaster_user_id,
           moderator_user_id,
+        },
+        transport: {
+          method: 'websocket',
+          session_id,
+        },
+      });
+    }
+    case TwitchApiEndpoint.POST_BAN_EVENTSUB_SUBSCRIPTION: {
+      const {
+        broadcaster_user_id,
+        session_id,
+      } = params as TwitchApiEndpointParams[TwitchApiEndpoint.POST_BAN_EVENTSUB_SUBSCRIPTION];
+      return JSON.stringify({
+        type: 'channel.ban',
+        version: '1',
+        condition: {
+          broadcaster_user_id,
         },
         transport: {
           method: 'websocket',
@@ -104,15 +149,15 @@ export const fetchTwitchApiEndpoint = async <E extends TwitchApiEndpoint>(
     body,
   });
 
-  if (response.status === 401 && deps.getFreshAccessToken !== null) {
+  if (response.status === 401 && deps.accessTokenManager !== null) {
     deps.logger.info('Unauthorized response received from Twitch API, attempting a token refresh…');
     // Looks like our token might have expired, let's try to fix it
-    await deps.getFreshAccessToken(deps.logger, deps.token);
+    await deps.accessTokenManager.getFreshAccessToken(deps.logger, deps.token);
     deps.logger.info('Token refresh finished, re-executing request…');
     return fetchTwitchApiEndpoint({
       ...deps,
-      // Avoid infinite loop by removing the refresh function
-      getFreshAccessToken: null,
+      // Avoid infinite loop by removing the accessTokenManager function
+      accessTokenManager: null,
     }, endpoint, ...rest);
   }
 

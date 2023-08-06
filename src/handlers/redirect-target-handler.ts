@@ -50,13 +50,15 @@ export const redirectTargetHandler = (deps: AppHandlerDependencies): RequestHand
   });
 
   const appResponse = await handleAccessTokenUpdate({
-    logger,
     tokenResponse,
-    clientId: deps.clientId,
-    db: deps.db,
-    getFreshAccessToken: deps.getFreshAccessToken,
-    channelManager: deps.channelManager,
-    twitchEventSubManager: deps.twitchEventSubManager,
+    updateUserDeps: {
+      logger,
+      clientId: deps.clientId,
+      db: deps.db,
+      accessTokenManager: deps.accessTokenManager,
+      channelManager: deps.channelManager,
+      twitchEventSubManager: deps.twitchEventSubManager,
+    },
   });
 
   jsonResponse(appResponse);
