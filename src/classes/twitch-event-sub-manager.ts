@@ -124,7 +124,8 @@ export class TwitchEventSubManager {
   private async reconnect(connectionUrl?: string) {
     this.deps.logger('info', '[TwitchEventSubManager] Connection lost, reconnecting…');
     this.sessionId = new DeferredPromise();
-    this.followEventSubscriptions = [];
+    // Remove IDs from subscriptions to make sure they are re-created
+    this.followEventSubscriptions = this.followEventSubscriptions.map(({ id: _, ...sub }) => sub);
     this.reConnection = await this.createConnection(connectionUrl);
   }
 
@@ -155,7 +156,8 @@ export class TwitchEventSubManager {
           this.deps.logger('debug', `[TwitchEventSubManager] Received invalid message: ${event.data}\nErrors: ${JSON.stringify(validator.errors, null, 2)}`);
         }
       });
-      newConnection.addEventListener('open', () => {
+      newConnection.addEventListener('open', (data) => {
+        this.deps.logger('debug', `[TwitchEventSubManager] Connection opened to ${data.target.url}`);
         resolve(newConnection);
       });
       newConnection.addEventListener('close', (event) => {
