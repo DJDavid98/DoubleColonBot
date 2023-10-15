@@ -6,6 +6,9 @@ Links:
 
 * [Bot channel](https://twitchbot.djdavid98.art)
 * [Authorization URL](https://twitchbot.djdavid98.art/authorize)
+* [Chat Overlay] Server URL: `https://twitchbot.djdavid98.art:8443`
+
+[Chat Overlay]: https://github.com/DJDavid98/Beat-Saber-Overlay
 
 ## Features
 
