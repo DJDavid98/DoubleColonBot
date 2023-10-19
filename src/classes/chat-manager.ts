@@ -191,7 +191,18 @@ export class ChatManager {
   }
 
   private async handleChatMessage(login: string, message: string, log: Logger, inputTags: ChatUserstate): Promise<unknown> {
-    if (inputTags['message-type'] !== 'chat' || message.startsWith('!')) return;
+    if (inputTags['message-type'] !== 'chat') return;
+    if (message.startsWith('!')) {
+      const match = message.match(commandRegex);
+      if (match === null) {
+        return;
+      }
+      const normalizedName = match[1].toLowerCase();
+      if (normalizedName !== 'bsr') {
+        return;
+      }
+      log.debug(`Treating command ${normalizedName} as chat message`);
+    }
 
     const username = this.getUsername(inputTags);
     switch (username) {
