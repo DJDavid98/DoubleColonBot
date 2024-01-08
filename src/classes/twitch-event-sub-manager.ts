@@ -66,7 +66,8 @@ export class TwitchEventSubManager {
 
         await this.processFollowEventsSubs(this.followEventSubscriptions);
       },
-      session_keepalive: () => {},
+      // eslint-disable-next-line unicorn/no-useless-undefined
+      session_keepalive: () => undefined,
       session_reconnect: async data => {
         await this.reconnect(data.payload.session.reconnect_url);
       },
@@ -124,6 +125,19 @@ export class TwitchEventSubManager {
   private async reconnect(connectionUrl?: string) {
     this.deps.logger('info', '[TwitchEventSubManager] Connection lost, reconnecting…');
     this.sessionId = new DeferredPromise();
+    // Delete all previous subscriptions
+    const fetchParams = await this.deps.getFetchTwitchApiParams(this.deps.logger);
+    await Promise.all(this.followEventSubscriptions.reduce((deletionPromises: Promise<unknown>[], followEventSub) => {
+      const { id } = followEventSub;
+      if (id)
+        return [
+          ...deletionPromises,
+          fetchTwitchApiEndpoint(fetchParams, TwitchApiEndpoint.DELETE_EVENTSUB_SUBSCRIPTION, { id }).catch(error => {
+            this.deps.logger('error', `[TwitchEventSubManager] Failed to clean up subscription with ID ${id}: ${getExceptionMessage(error)}`);
+          }),
+        ];
+      return deletionPromises;
+    }, []));
     // Remove IDs from subscriptions to make sure they are re-created
     this.followEventSubscriptions = this.followEventSubscriptions.map(({ id: _, ...sub }) => sub);
     this.reConnection = await this.createConnection(connectionUrl);
