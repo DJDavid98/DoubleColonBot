@@ -9,7 +9,7 @@ export class WebsocketManager {
   constructor(server: http.Server, private readonly logger: Logger) {
     this.io = new Server(server, {
       serveClient: false,
-      cors: { origin: /^(https?:\/\/)?(localhost(:\d+)?|overlay.djdavid98.art)$/ },
+      cors: { origin: /^(https?:\/\/)?(localhost(:\d+)?|overlay\.djdavid98\.art|personal-bsdp-overlay-djdavid98\.vercel\.app)$/ },
     }); // Create socket.io instance
     this.io.on('connection', this.onConnection.bind(this));
 
