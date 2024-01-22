@@ -21,6 +21,8 @@ extend(relativeTime);
 
 process.title = 'DoubleColonBot';
 
+const startTimeMs = performance.now();
+
 (async () => {
   let db: DbClient;
   let stateManager: StateManager;
@@ -111,6 +113,7 @@ process.title = 'DoubleColonBot';
     redisManager,
     twitchEventSubManager,
     logger: startupLogger,
+    startTimeMs,
   });
 
   await twitchEventSubManager.connect(startupLogger);

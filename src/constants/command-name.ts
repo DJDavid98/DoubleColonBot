@@ -1,6 +1,6 @@
 import { IdentityMap, identityMap } from '../utils/identity-map';
 
-export const CommandName = identityMap(['game', 'category', 'chat', 'pronouns']);
+export const CommandName = identityMap(['game', 'category', 'chat', 'pronouns', 'restart']);
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export type CommandName = IdentityMap<typeof CommandName>;
 

@@ -30,8 +30,11 @@ import { validateUsers } from '../validation/validate-users';
 import { BanWebsocketMessage } from '../model/socket-events';
 import { validateBannedUsers } from '../validation/validate-banned-users';
 import { validateChannelFollowers } from '../validation/validate-chanel-followers';
+import { formatTime } from '../utils/format-time';
 
 const commandRegex = /^!([\da-z]+)(?:\s+(.*))?$/i;
+
+const minimumRunTimeBeforeRestartMs = 60e3;
 
 interface ChatCommand {
   name: CommandName;
@@ -50,6 +53,7 @@ interface ChatManagerDeps {
   redisManager: RedisManager;
   twitchEventSubManager: TwitchEventSubManager;
   logger: Logger;
+  startTimeMs: number;
 }
 
 export class ChatManager {
@@ -301,6 +305,24 @@ export class ChatManager {
   private async handleCommand(login: string, reply: MessageReply, log: Logger, tags: ChatUserstate, name: CommandName, params?: string): Promise<unknown> {
     const username = this.getUsername(tags);
     switch (name) {
+      case CommandName.restart: {
+        if (!this.isStreamer(login, tags)) {
+          return reply('Only the streamer can use this command');
+        }
+
+        const currentTimeMs = performance.now();
+        const botRunTimeMs = currentTimeMs - this.deps.startTimeMs;
+        if (botRunTimeMs < minimumRunTimeBeforeRestartMs) {
+          return reply(`The bot has only been running for ${formatTime(botRunTimeMs)}, please wait ${formatTime(minimumRunTimeBeforeRestartMs - botRunTimeMs)} before trying again.`);
+        }
+
+        log.info(`Restart requested by ${login}`);
+        await reply('The bot will be restarted in a few seconds', true);
+
+        // Assumes the bot is run via PM2 which will automatically restart it on a clean exit
+        process.exit();
+        break;
+      }
       case CommandName.chat: {
         const validSettingNames = tables.chat_settings.columns.filter(v => v !== tables.chat_settings.primaryKey);
         if (!params) {
