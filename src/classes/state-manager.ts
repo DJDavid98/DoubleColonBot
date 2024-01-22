@@ -2,8 +2,7 @@ import { Client } from 'pg';
 import { statesTable } from '../database/states-table';
 import { getRandomUuid } from '../utils/random';
 import { Logger } from '../model/logger';
-
-const HOUR_IN_MS = 3600e3;
+import { formatTime, oneHourMS } from '../utils/format-time';
 
 /**
  * Stores secure state values for OAuth authentication in the database
@@ -11,8 +10,8 @@ const HOUR_IN_MS = 3600e3;
 export class StateManager {
   constructor(private db: Client) {}
 
-  async startCleanupInterval(logger: Logger, staleTimeMs = HOUR_IN_MS) {
-    logger.debug(`[StateManager] Initializing with stale time of ${staleTimeMs} ms`);
+  async startCleanupInterval(logger: Logger, staleTimeMs = oneHourMS) {
+    logger.debug(`[StateManager] Initializing with stale time of ${formatTime(staleTimeMs)}`);
 
     await this.cleanupOldStateValues(logger, staleTimeMs);
     setInterval(() => void this.cleanupOldStateValues(logger, staleTimeMs), staleTimeMs);

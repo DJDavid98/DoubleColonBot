@@ -30,11 +30,11 @@ import { validateUsers } from '../validation/validate-users';
 import { BanWebsocketMessage } from '../model/socket-events';
 import { validateBannedUsers } from '../validation/validate-banned-users';
 import { validateChannelFollowers } from '../validation/validate-chanel-followers';
-import { formatTime } from '../utils/format-time';
+import { formatTime, oneMinuteMS } from '../utils/format-time';
 
 const commandRegex = /^!([\da-z]+)(?:\s+(.*))?$/i;
 
-const minimumRunTimeBeforeRestartMs = 60e3;
+const minimumRunTimeBeforeRestartMs = oneMinuteMS;
 
 interface ChatCommand {
   name: CommandName;

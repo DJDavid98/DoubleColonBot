@@ -1,16 +1,18 @@
-const oneHourMS = 3600e6;
-const oneMinuteMS = 60e3;
-const oneSecondMS = 1e3;
+export const oneHourMS = 3600e3;
+export const oneMinuteMS = 60e3;
+export const oneSecondMS = 1e3;
 
 const roundToOneDecimal = (value: number) => Math.ceil(value * 10) / 10;
 
 export const formatTime = (durationMs: number): string => {
-  if (durationMs > oneHourMS) {
+  if (durationMs >= oneHourMS) {
     return roundToOneDecimal(durationMs / oneHourMS) + 'h';
   }
-  if (durationMs > oneMinuteMS) {
+  if (durationMs >= oneMinuteMS) {
     return roundToOneDecimal(durationMs / oneMinuteMS) + 'm';
   }
-
-  return roundToOneDecimal(durationMs / oneSecondMS) + 's';
+  if (durationMs >= oneSecondMS) {
+    return roundToOneDecimal(durationMs / oneSecondMS) + 's';
+  }
+  return roundToOneDecimal(durationMs) + 'ms';
 };
